@@ -1,0 +1,49 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap");
+
+:root {
+  color-scheme: dark;
+  font-family: "DM Mono", monospace;
+  background: #101514;
+  color: #e5e0d2;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #app {
+  width: 100%;
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 47px, #c3d0bb08 48px),
+    radial-gradient(ellipse at 50% 46%, #28332d 0, #17201d 43%, #0d1211 100%);
+}
+
+#app {
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+canvas {
+  display: block;
+  width: min(100%, 1200px);
+  max-height: calc(100vh - 36px);
+  border: 1px solid #68736b;
+  box-shadow: 0 22px 90px #0009;
+  image-rendering: pixelated;
+}
+
+@media (max-width: 600px) {
+  #app { padding: 0; }
+  canvas { max-height: 100vh; border: 0; }
+}

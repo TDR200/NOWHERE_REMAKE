@@ -1,0 +1,27 @@
+{
+  "id": "forest-road",
+  "title": "ACT II · JOHN",
+  "place": "Дом и лесная дорога",
+  "tone": "forest",
+  "width": 13,
+  "height": 9,
+  "spawn": { "x": 2, "y": 6 },
+  "tiles": [
+    "#############",
+    "#..s...s....#",
+    "#...s.......#",
+    "#..s....s...#",
+    "#....s......#",
+    "#s.....s....#",
+    "#..s........#",
+    "#.....s.....#",
+    "#############"
+  ],
+  "objects": [
+    { "id": "diary", "label": "Дневник", "x": 2, "y": 3, "dialogue": "forestDiary", "setFlag": "forest_diary_read" },
+    { "id": "road", "label": "Дорога", "x": 11, "y": 2, "dialogue": "forestRoad", "requiresFlag": "forest_diary_read", "setFlag": "forest_road_open", "nextScene": "CafeScene" }
+  ],
+  "enemies": [
+    { "id": "forest-creature", "name": "Лесное существо", "x": 8, "y": 5 }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "cafe",
+  "title": "ACT II · JOHN",
+  "place": "EYE JACK CAFÉ",
+  "tone": "cafe",
+  "width": 13,
+  "height": 9,
+  "spawn": { "x": 2, "y": 6 },
+  "tiles": [
+    "#############",
+    "#...........#",
+    "#..s........#",
+    "#...........#",
+    "#.....s.....#",
+    "#...........#",
+    "#...........#",
+    "#...........#",
+    "#############"
+  ],
+  "objects": [
+    { "id": "sophia", "label": "София", "x": 6, "y": 3, "dialogue": "sophia", "setFlag": "sophia_met" },
+    { "id": "restroom", "label": "Туалет", "x": 10, "y": 2, "dialogue": "restroom", "requiresFlag": "sophia_met", "setFlag": "tollbooth_key" },
+    { "id": "cafe-exit", "label": "Выход", "x": 11, "y": 7, "dialogue": "cafeExit", "requiresFlag": "tollbooth_key", "nextScene": "ForestRoadScene" }
+  ],
+  "enemies": []
+}

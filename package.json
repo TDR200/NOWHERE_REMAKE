@@ -1,0 +1,21 @@
+{
+  "name": "nowhere-isometric",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "validate:assets": "tsx tools/validate-assets.ts"
+  },
+  "dependencies": {
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "tsx": "^4.19.4",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.5"
+  }
+}
