@@ -840,10 +840,11 @@ function draw(){
   }else{
     for(let sum=0;sum<W+H;sum++)
       for(let y=0;y<H;y++){let x=sum-y;if(x>=0&&x<W)drawTile(x,y)}
-    if(boxes.length)for(const b of boxes){
-      const p=pos(b.goalX,b.y);
-      ctx.fillStyle="#e9e3a733";ctx.beginPath();ctx.ellipse(p.x,p.y,16,9,0,0,7);ctx.fill();
-      ctx.strokeStyle="#e9d999";ctx.stroke();
+    if (boxes.length) {
+      for (const b of boxes) {
+        const p = pos(b.goalX, b.y);
+        drawSprite("goal", p.x, p.y);
+      }
     }
     for(const o of s.objects||[])drawObject(o[0],o[1],o[2]);
     const figures=[
