@@ -8,6 +8,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-blue)
 ![Vite](https://img.shields.io/badge/Vite-purple)
 ![Platform](https://img.shields.io/badge/platform-Web-blue)
+![Uploading mainscreen.png…]()
 
 ---
 
