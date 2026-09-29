@@ -1,5 +1,6 @@
-<img width="1672" height="941" alt="mainscreen" src="https://github.com/user-attachments/assets/94375558-0cef-4d15-a026-9c0d95a039e6" /># NOWHERE
+<img width="1672" height="941" alt="mainscreen" src="https://github.com/user-attachments/assets/94375558-0cef-4d15-a026-9c0d95a039e6" />
 
+## NOWHERE
 > **Atmospheric psychological horror game**
 > Browser prototype / Vertical Slice
 
