@@ -1,0 +1,929 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NOWHERE — playable prototype</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#080b0d;color:#e8e5dc;font:15px/1.45 system-ui,sans-serif}
+  main{max-width:1000px;margin:auto;padding:12px}
+  header{display:flex;justify-content:space-between;gap:12px;align-items:center}
+  h1{font-size:19px;letter-spacing:.28em;font-weight:500;margin:8px 0}
+  .hint{color:#a6aaab;font-size:12px;text-align:right}
+  canvas{display:block;width:100%;background:#101619;border:1px solid #394247}
+  #panel{display:flex;gap:18px;flex-wrap:wrap;padding:10px 2px;color:#c9ccc8}
+  #objective{color:#d5c697}
+  #touch{display:flex;justify-content:space-between;gap:20px;margin-top:10px}
+  #touch button{min-width:54px;min-height:45px;background:#232b2e;color:#eee;border:1px solid #5b6666;border-radius:5px;font-size:18px}
+  .cross{display:grid;grid-template-columns:repeat(3,54px);gap:4px}
+  .cross button:first-child{grid-column:2}
+  .cross button:nth-child(2){grid-column:1}
+  .cross button:nth-child(3){grid-column:2}
+  .cross button:nth-child(4){grid-column:3}
+  .actions{display:flex;align-items:center;gap:6px}
+  @media(min-width:800px){#touch{display:none}}
+</style>
+</head>
+<body>
+<main>
+  <header><h1>NOWHERE</h1><div class="hint">WASD / стрелки · E — действие · Пробел — атака · Q — оружие</div></header>
+  <canvas id="game" width="960" height="650"></canvas>
+  <div id="panel">
+    <span id="chapter"></span><span id="objective"></span>
+    <span id="health"></span><span id="inventory"></span>
+  </div>
+  <div id="touch">
+    <div class="cross">
+      <button data-key="ArrowUp">↑</button>
+      <button data-key="ArrowLeft">←</button>
+      <button data-key="ArrowDown">↓</button>
+      <button data-key="ArrowRight">→</button>
+    </div>
+    <div class="actions">
+      <button data-key="KeyE">E</button>
+      <button data-key="Space">⚔</button>
+      <button data-key="KeyQ">Q</button>
+    </div>
+  </div>
+</main>
+<script>
+(() => {
+"use strict";
+
+const canvas=document.querySelector("#game"), ctx=canvas.getContext("2d");
+const ui={
+  chapter:document.querySelector("#chapter"), objective:document.querySelector("#objective"),
+  health:document.querySelector("#health"), inventory:document.querySelector("#inventory")
+};
+const W=13,H=9, TW=58,TH=34;
+const STORE="nowhere_prototype_v1";
+const F={};
+let stage=0, player={x:2,y:4,hp:100,weapon:"Топор",ammo:14,shells:8};
+let boxes=[],enemies=[],modal=[],modalAction=null,notice="",noticeUntil=0;
+let timer=0, last=performance.now(),moveAt=0,attackAt=0,enemyAt=0,ending="";
+const keys=new Set();
+
+const scenes=[
+  {name:"ПРОЛОГ · 5 ИЮЛЯ 1993",place:"Газетная вырезка",tone:"paper",objective:"Нажмите Enter.",
+   intro:["5 JULY 1993","EARTHQUAKE",
+     "Под обломками квартиры обнаружены John, 30 лет, и Sophia, 28 лет.",
+     "Тела обнаружила соседка Emily Stanford."],start:[2,4]},
+  {name:"ACT I · LUCAS",place:"Комната 202",tone:"room",
+   objective:"Поговорите с Кэтрин, передвиньте три ящика и подойдите к кровати.",
+   intro:["Обычный город за окном. В комнате — три тяжёлых ящика.","Пока всё выглядит нормально."],
+   start:[2,4],puzzle:3,
+   objects:[[2,2,"Кэтрин","catherine"],[10,4,"Кровать","sleep"],[11,7,"Окно","window"]]},
+  {name:"ACT II · JOHN",place:"Дом и лесная дорога",tone:"forest",
+   objective:"Прочтите дневник и доберитесь до дороги. В тени вас труднее заметить.",
+   intro:["Темнота. Другое место.","JOHN","10 октября. Дом посреди леса."],
+   start:[2,6],objects:[[2,3,"Дневник","diary"],[11,2,"Дорога","road"]],
+   foes:[[8,5,3,"Лесное существо"]]},
+  {name:"ACT II · JOHN",place:"EYE JACK CAFÉ",tone:"cafe",
+   objective:"Поговорите с Софией, найдите ключ в туалете и вернитесь.",
+   intro:["Лес сменяется дорогой, дорогой — пустыми автомобилями.","Вывеска: EYE JACK CAFÉ."],
+   start:[2,6],objects:[[6,3,"София","sophia"],[10,2,"Туалет","tollkey"],[11,7,"Выход","cafeexit"]]},
+  {name:"ACT III · LUCAS",place:"Работа и пансион",tone:"factory",
+   objective:"Поговорите с Майклом, расставьте ящики, затем исследуйте комнату 202.",
+   intro:["LUCAS","Майкл объясняет обязанности. Металлический пол громко звенит под ногами."],
+   start:[2,4],puzzle:3,metal:true,
+   objects:[[2,2,"Майкл","michael"],[10,2,"Кэтрин · 201","warning"],
+            [10,6,"Фотография · 202","photo"],[11,7,"Лестница","workexit"]]},
+  {name:"ACT IV–VI · JOHN / LUCAS",place:"Хижина дровосека",tone:"forest",
+   objective:"Возьмите топор, переживите встречу с дровосеком и поговорите с Софией.",
+   intro:["Дневник Джона изменился: найденный в лесу мужчина исчез.","В глубине леса Майкл спрашивает о своём пропавшем сыне."],
+   start:[2,6],objects:[[2,2,"Топор","axe"],[8,3,"София","message"],
+                        [11,7,"Комната 203","merge"]],
+   foes:[[9,5,5,"Дровосек"]]},
+  {name:"ACT VII · JOHN LUCAS",place:"Промышленная зона",tone:"factory",
+   objective:"Найдите ключи, воспользуйтесь тенями и пройдите фабрику.",
+   intro:["EVERYTHING STARTS HERE","THE END STARTS HERE",
+          "JOHN","LUCAS","JOHN LUCAS"],
+   start:[2,6],metal:true,
+   objects:[[3,2,"Тело · ключ 102","body"],[5,2,"Ключ фабрики","factorykey"],
+            [10,3,"Комната Питера · 101","peterroom"],[11,7,"Гараж","garage"]],
+   foes:[[8,4,3,"Существо"],[9,6,3,"Существо"]]},
+  {name:"ACT VII · JOHN LUCAS",place:"Затопленный гараж",tone:"water",
+   objective:"Победите существо и найдите проход дальше.",
+   intro:["Вода мутная. Дна не видно.","Что-то в воде прислушивается к шагам."],
+   start:[2,5],objects:[[11,7,"Проход","snailExit"]],
+   foes:[[8,4,7,"Гигантская улитка"]]},
+  {name:"ACT VII · JOHN LUCAS",place:"Комната 102",tone:"factory",
+   objective:"Выживите после землетрясения. Победите живую дрель и вскройте стену.",
+   intro:["Ключ с цифрами 102 подходит к двери.","Землетрясение. Лампы гаснут. За стеной слышен бур."],
+   start:[2,5],metal:true,objects:[[10,2,"Треснувшая стена","wall"],[3,2,"Газета","newspaper"]],
+   foes:[[8,5,7,"Пневматическая дрель"]]},
+  {name:"ACT VIII · CATHERINE",place:"Тёмный лес",tone:"forest",
+   objective:"Прочтите дневник Кэтрин и найдите путь через лес.",
+   intro:["В дневнике Кэтрин описаны боль, изменение тела и шаги Эмили за дверью.",
+          "За оградой деревья почти лишены ветвей."],
+   start:[2,6],objects:[[2,2,"Дневник Кэтрин","cathdiary"],[11,7,"Выжженная дорога","runstart"]],
+   foes:[[8,4,6,"Сын Майкла"],[7,6,2,"Красное существо"]]},
+  {name:"ACT VIII · RUN FOR LIFE",place:"Дорога → пансион",tone:"heat",
+   objective:"Доберитесь до комнаты 203 прежде, чем истечёт время.",
+   intro:["Высокий звук, похожий на гигантскую цикаду.","ТЕЛО МЕНЯЕТСЯ.","ROOM 203. БЕГИ."],
+   start:[2,7],time:80,objects:[[11,1,"Комната 203","room203"]],
+   foes:[[6,6,2,"Красное существо"],[8,4,2,"Красное существо"]]},
+  {name:"ACT IX · ЭМИЛИ",place:"Комната 203",tone:"room",
+   objective:"Поговорите с Эмили и закройте четыре светящиеся точки ящиками.",
+   intro:["За дверью исчезают все звуки.","Эмили выглядит почти обычным человеком."],
+   start:[2,4],puzzle:4,
+   objects:[[2,2,"Эмили","emilyTalk"],[11,7,"Дверь наверх","finalPuzzleExit"]]},
+  {name:"ACT IX · ПРАВДА",place:"Пространство памяти",tone:"memory",
+   objective:"Исследуйте аварию, поговорите с Кэтрин и идите к свету.",
+   intro:["За дверью нет знакомого города.","Дорога повторяется, словно воспоминание, из которого нельзя выйти."],
+   start:[2,6],objects:[[5,2,"Разбитый автомобиль","crash"],
+                         [8,5,"Кэтрин","lastCatherine"],[11,1,"Свет","light"]]},
+  {name:"ACT IX · ЭМИЛИ",place:"Искажённая комната 203",tone:"boss",
+   objective:"Переживите встречу с Эмили.",
+   intro:["Комната 203 возвращается — больше прежней и менее настоящей.","Эмили движется между кроватями."],
+   start:[2,6],objects:[[11,7,"Последний коридор","afterBoss"]],
+   foes:[[8,4,11,"Эмили"]]},
+  {name:"ФИНАЛ",place:"Два направления",tone:"memory",
+   objective:"Выберите, к кому идти.",
+   intro:["«Прости», — говорит Эмили.","Лукас не уверен, кому из них следовало просить прощения.",
+          "Впереди — два направления."],
+   start:[6,7],objects:[[3,2,"Кэтрин","chooseC"],[10,2,"Эмили","chooseE"]]}
+];
+
+const max=(a,b)=>Math.max(a,b);
+function has(k){return !!F[k]}
+function mark(k){F[k]=true;save()}
+function save(){
+  try{localStorage.setItem(STORE,JSON.stringify({stage,flags:F,hp:player.hp,ammo:player.ammo,shells:player.shells}))}catch{}
+}
+function say(lines,after){
+  modal=Array.isArray(lines)?lines.slice():[lines];
+  modalAction=after||null;
+}
+function message(s){notice=s;noticeUntil=performance.now()+3200}
+function dist(a,b){return Math.abs(a.x-b.x)+Math.abs(a.y-b.y)}
+function tile(x,y){
+  if(x<0||y<0||x>=W||y>=H)return "wall";
+  if(x===0||y===0||x===W-1||y===H-1)return "wall";
+  if(stage===10 && x===6 && y>1 && y<6)return "wall";
+  const tone=scenes[stage].tone;
+  if(tone==="forest" && ((x*7+y*11)%5<2))return "shadow";
+  if(tone==="heat" && (x+y)%5===0)return "shadow";
+  if((tone==="factory"||tone==="boss") && ((x+2*y)%4===0))return "metal";
+  if(tone==="water" && (x+3*y)%5<2)return "water";
+  if(tone==="room" && (x+y)%6===0)return "shadow";
+  return "floor";
+}
+function blocked(x,y){
+  return tile(x,y)==="wall"||boxes.some(b=>b.x===x&&b.y===y);
+}
+function setup(n,keep=false){
+  stage=n; ending="";
+  const s=scenes[n];
+  player.x=s.start[0];player.y=s.start[1];
+  if(!keep){player.hp=max(35,player.hp);player.ammo=max(8,player.ammo);player.shells=max(4,player.shells)}
+  boxes=[];
+  if(s.puzzle){
+    const rows=s.puzzle===4?[1,3,5,7]:[2,4,6];
+    boxes=rows.map(y=>({x:5,y,goalX:8}));
+  }
+  enemies=(s.foes||[]).map(([x,y,hp,name],i)=>({
+    x,y,hp,maxhp:hp,name,boss:hp>=5,alert:0,phase:0,baseX:x,baseY:y,i
+  }));
+  timer=s.time||0;
+  save();
+  if(s.intro)say(s.intro,()=>{if(n===0)setup(1);});
+}
+function puzzleDone(){return boxes.length>0&&boxes.every(b=>b.x===b.goalX)}
+function bossAlive(){return enemies.some(e=>e.boss&&e.hp>0)}
+function nearestObject(){
+  return (scenes[stage].objects||[])
+    .map(([x,y,label,id])=>({x,y,label,id}))
+    .filter(o=>dist(player,o)<=1)
+    .sort((a,b)=>dist(player,a)-dist(player,b))[0];
+}
+function advance(){setup(stage+1)}
+function interact(){
+  if(ending)return;
+  if(modal.length){nextModal();return}
+  const o=nearestObject();
+  if(!o){message("Здесь нечего осматривать.");return}
+  switch(o.id){
+    case "catherine":
+      mark("CATHERINE_MET");
+      say(["Кэтрин: «Мы ведь только начали узнавать друг друга».",
+           "Она отступает, освобождая проход к комнате."]);break;
+    case "window":say("За окном — обычный город. Пока.");break;
+    case "sleep":
+      if(!has("CATHERINE_MET"))return message("Сначала поговорите с Кэтрин.");
+      if(!puzzleDone())return message("Ящики перекрывают путь. Поставьте их на свет.");
+      mark("BOX_01_DONE");mark("LUCAS_SLEEP");advance();break;
+    case "diary":
+      mark("JOHN_DIARY_10");
+      say(["10 октября. Я нашёл в лесу мужчину без сознания и принёс домой.",
+           "11 октября. Он всё ещё не очнулся. Я продолжаю наблюдать."]);break;
+    case "road":
+      if(!has("JOHN_DIARY_10"))return message("Сначала осмотрите дом и дневник.");
+      mark("SHADOW_TUTORIAL");mark("EARTHQUAKE_01");
+      say(["Дорогу сотрясает землетрясение. Машина сдвигается и перекрывает проход.",
+           "Когда толчки прекращаются, наступает тишина."],advance);break;
+    case "sophia":
+      if(!has("SOPHIA_MET")){
+        mark("SOPHIA_MET");
+        say(["София: «Вы здесь недавно?»","Джон: «Джон».","София: «Я София. Работаю здесь»."]);
+      }else if(has("TOLLBOOTH_KEY")&&!has("SOPHIA_GONE")){
+        mark("SOPHIA_GONE");say("В кафе больше никого нет. София исчезла без звука.");
+      }else say(has("SOPHIA_GONE")?"Пустая стойка. Её чашка ещё стоит на месте.":"София ждёт за стойкой.");
+      break;
+    case "tollkey":
+      if(!has("SOPHIA_MET"))return message("Сначала осмотрите кафе.");
+      mark("TOLLBOOTH_KEY");say("На полу лежит ключ. На нём выбито: TOLLBOOTH.");break;
+    case "cafeexit":
+      if(!has("SOPHIA_GONE"))return message("Сначала вернитесь в зал кафе.");
+      advance();break;
+    case "michael":
+      mark("MICHAEL_MET");say(["Майкл: «Расставь ящики по отметкам».",
+                              "Под ногами гремит металлический пол: CLANG."]);break;
+    case "warning":
+      mark("CATHERINE_WARNING");
+      say(["Кэтрин: «Ты ведь не оставишь меня в этот раз?»",
+           "Лукас не знает, что ответить."]);break;
+    case "photo":
+      mark("PHOTO_FOUND");
+      say(["На снимке мужчина и женщина. Они похожи на Лукаса и Кэтрин.",
+           "На обороте: «To John and Sophia, to remember the lovely times we spent together».",
+           "Подпись: Emily.","…"]);break;
+    case "workexit":
+      if(!has("MICHAEL_MET")||!puzzleDone()||!has("PHOTO_FOUND")||!has("CATHERINE_WARNING"))
+        return message("Поговорите с Майклом и Кэтрин, решите задачу и осмотрите фотографию.");
+      mark("BOX_02_DONE");advance();break;
+    case "axe":
+      if(!has("JOHN_AXE")){mark("JOHN_AXE");player.weapon="Топор";say("Тяжёлый топор. Рядом растёт растение, после удара о которое становится легче дышать.");player.hp=Math.min(100,player.hp+25)}
+      else message("Топор уже у вас.");break;
+    case "message":
+      if(bossAlive())return message("К хижине не подойти: дровосек преследует вас.");
+      mark("PLIERS");mark("SOPHIA_MESSAGE");
+      say(["Вы находите плоскогубцы у тела дровосека.",
+           "София: «Go and see her, Lucas. Go and find her. She's waiting for you»."]);break;
+    case "merge":
+      if(!has("SOPHIA_MESSAGE"))return message("Сначала найдите Софию.");
+      mark("JOHN_LUCAS");advance();break;
+    case "body":
+      mark("KEY_102");say(["Тело похоже на Майкла. В его руке — пистолет.",
+                            "Внутри тела обнаруживается ключ с номером 102.",
+                            "Голос произносит что-то за спиной. Обернувшись, вы никого не видите."]);break;
+    case "factorykey":
+      mark("FACTORY_KEY");say("На ключе выгравировано: FACTORY.");break;
+    case "peterroom":
+      if(!has("FACTORY_KEY"))return message("Дверь в эту часть здания заперта.");
+      mark("SHOTGUN");player.weapon="Ружьё";player.shells+=5;
+      say(["Комната 101. В прикроватной тумбочке — ключ от машины.",
+           "Под кроватью лежит помповое ружьё.","Питер здесь не отвечает."]);break;
+    case "garage":
+      if(!has("KEY_102")||!has("FACTORY_KEY")||!has("SHOTGUN"))
+        return message("Нужны ключи и предметы из комнаты Питера.");
+      advance();break;
+    case "snailExit":
+      if(bossAlive())return message("Вода вздрагивает: существо всё ещё здесь.");
+      mark("GIANT_SNAIL_DEFEATED");advance();break;
+    case "newspaper":
+      mark("NEWSPAPER_READ");
+      say(["Газета сообщает о четырёх новых жертвах. Тело ребёнка нашли возле болот.",
+           "В убийствах подозревают дровосека."]);break;
+    case "wall":
+      if(bossAlive())return message("Бур перекрывает подход к стене.");
+      if(!has("NEWSPAPER_READ"))return message("Сначала осмотрите комнату.");
+      mark("PNEUMATIC_DRILL");mark("PETER_DEAD");
+      say(["Вы используете пневматическую дрель, чтобы вскрыть треснувшую стену.",
+           "Позже Питер успевает сказать лишь: «Эмили повсюду». Он умирает."],advance);break;
+    case "cathdiary":
+      mark("CATHERINE_DIARY");
+      say(["«Болит живот. Он растёт. Моё тело меняется».",
+           "«Я боюсь выходить. За дверью слышны шаги Эмили»."
+          ]);break;
+    case "runstart":
+      if(!has("CATHERINE_DIARY"))return message("Сначала прочтите дневник.");
+      if(bossAlive())return message("Существо перекрывает дорогу.");
+      mark("SON_OF_MICHAEL_DEFEATED");advance();break;
+    case "room203":
+      mark("ROOM_203_REACHED");advance();break;
+    case "emilyTalk":
+      if(has("EMILY_TALKED"))return say("Эмили молча смотрит на светящиеся точки.");
+      mark("EMILY_TALKED");
+      say(["Эмили: «Ты наконец вернулся. Я ждала тебя, любимый».",
+           "Лукас спрашивает о Кэтрин. Эмили не даёт прямого ответа.",
+           "Искажение тела постепенно прекращается."]);break;
+    case "finalPuzzleExit":
+      if(!has("EMILY_TALKED")||!puzzleDone())return message("Сначала поговорите с Эмили и закройте все светящиеся точки.");
+      mark("FINAL_PUZZLE");advance();break;
+    case "crash":
+      mark("CRASH_MEMORY");
+      say(["Разбитый автомобиль. Погасшие фары. Запах нагретого металла.",
+           "Воспоминание складывается не сразу: Эмили погибла здесь."]);break;
+    case "lastCatherine":
+      mark("LAST_CATHERINE");
+      say(["Кэтрин стоит в стороне от дороги.",
+           "Она не пытается объяснить прошлое. Она напоминает, что у Лукаса ещё есть настоящее."]);break;
+    case "light":
+      if(!has("CRASH_MEMORY")||!has("LAST_CATHERINE"))
+        return message("Воспоминание ещё не сложилось. Осмотрите дорогу и найдите Кэтрин.");
+      advance();break;
+    case "afterBoss":
+      if(bossAlive())return message("Эмили не даёт вам уйти.");
+      mark("EMILY_DEFEATED");
+      say(["Эмили: «Прости».","Лукас: «Это я оставил тебя».",
+           "Он спрашивает о машине и о том, могла ли она выбраться до взрыва.",
+           "Эмили: «Может быть, ещё не поздно начать сначала?»"],advance);break;
+    case "chooseC":finish("CATHERINE");break;
+    case "chooseE":finish("EMILY");break;
+  }
+  save();
+}
+function finish(which){
+  ending=which;mark("ENDING_"+which);
+  say(which==="CATHERINE"
+    ?["Лукас идёт к Кэтрин. Пространство позади них постепенно исчезает.",
+      "Он выбирает настоящее.","NOWHERE","THE END"]
+    :["Лукас возвращается к Эмили. Знакомый город исчезает.",
+      "Они остаются вместе в искажённом пространстве.","NOWHERE","THE END"],
+    ()=>{message("Конец. Нажмите R, чтобы начать заново.");});
+}
+function nextModal(){
+  if(modal.length)modal.shift();
+  if(!modal.length&&modalAction){const fn=modalAction;modalAction=null;fn()}
+}
+function move(dx,dy){
+  if(modal.length||ending)return;
+  const x=player.x+dx,y=player.y+dy;
+  if(tile(x,y)==="wall")return;
+  const b=boxes.find(b=>b.x===x&&b.y===y);
+  if(b){
+    const nx=x+dx,ny=y+dy;
+    if(blocked(nx,ny))return;
+    b.x=nx;b.y=ny;
+    if(puzzleDone())message("Все светящиеся точки закрыты.");
+  }
+  player.x=x;player.y=y;
+  if(tile(x,y)==="metal"){
+    for(const e of enemies)if(e.hp>0&&dist(player,e)<6)e.alert=4;
+  }
+  if(stage===10&&tile(x,y)!=="shadow")player.hp=Math.max(1,player.hp-.4);
+}
+function attack(){
+  if(modal.length||ending||performance.now()<attackAt)return;
+  const ranged=player.weapon!=="Топор";
+  let available=true,damage=1,range=1;
+  if(player.weapon==="Пистолет"){available=player.ammo>0;damage=2;range=5}
+  if(player.weapon==="Ружьё"){available=player.shells>0;damage=4;range=3}
+  if(!available){message("Боеприпасы закончились. Q — сменить оружие.");return}
+  attackAt=performance.now()+(ranged?600:420);
+  if(player.weapon==="Пистолет")player.ammo--;
+  if(player.weapon==="Ружьё")player.shells--;
+  const target=enemies.filter(e=>e.hp>0&&dist(e,player)<=range)
+    .sort((a,b)=>dist(a,player)-dist(b,player))[0];
+  if(ranged)for(const e of enemies)if(e.hp>0&&dist(e,player)<8)e.alert=7;
+  if(!target){message(ranged?"Выстрел уходит в темноту.":"Удар не достигает цели.");return}
+  target.hp-=damage;target.alert=10;
+  message(target.hp>0?`${target.name}: попадание.`:`${target.name} больше не движется.`);
+  if(target.hp<=0){
+    if(target.name==="Дровосек"){player.ammo+=10;message("Дровосек повержен. Найдены патроны.");}
+    if(target.name==="Гигантская улитка")player.shells+=5;
+    if(target.name==="Пневматическая дрель")player.hp=Math.min(100,player.hp+30);
+    if(target.name==="Эмили")player.hp=Math.max(1,player.hp);
+  }
+  save();
+}
+function cycleWeapon(){
+  const order=["Топор","Пистолет","Ружьё"];
+  const allowed=order.filter(w=>w==="Топор"||(w==="Пистолет"&&stage>=6)||(w==="Ружьё"&&has("SHOTGUN")));
+  player.weapon=allowed[(allowed.indexOf(player.weapon)+1+allowed.length)%allowed.length];
+  message("Оружие: "+player.weapon);
+}
+function restart(){
+  for(const k of Object.keys(F))delete F[k];
+  player={x:2,y:4,hp:100,weapon:"Топор",ammo:14,shells:8};
+  try{localStorage.removeItem(STORE)}catch{}
+  setup(0);
+}
+function enemyTick(){
+  if(modal.length||ending)return;
+  for(const e of enemies){
+    if(e.hp<=0)continue;
+    const d=dist(e,player), hidden=tile(player.x,player.y)==="shadow";
+    if(d<=1){
+      player.hp-=e.boss?13:8;
+      e.alert=5;
+      if(player.hp<=0){
+        player.hp=100;
+        message("Вы потеряли сознание. Попробуйте пройти участок ещё раз.");
+        setup(stage,true);return;
+      }
+    }
+    if(d<=(hidden?2:4))e.alert=5;
+    if(e.alert>0){
+      e.alert--;
+      const options=[
+        {x:e.x+Math.sign(player.x-e.x),y:e.y},
+        {x:e.x,y:e.y+Math.sign(player.y-e.y)}
+      ].sort(()=>Math.random()-.5);
+      for(const p of options){
+        if(p.x===player.x&&p.y===player.y)break;
+        if(!blocked(p.x,p.y)&&!enemies.some(other=>other!==e&&other.hp>0&&other.x===p.x&&other.y===p.y)){
+          e.x=p.x;e.y=p.y;break;
+        }
+      }
+    }else if(Math.random()<.35){
+      const dirs=[[1,0],[-1,0],[0,1],[0,-1]],[dx,dy]=dirs[Math.random()*4|0];
+      const nx=e.x+dx,ny=e.y+dy;
+      if(!blocked(nx,ny)&&dist({x:nx,y:ny},player)>1){e.x=nx;e.y=ny}
+    }
+  }
+}
+function pos(x,y){return {x:480+(x-y)*TW/2,y:105+(x+y)*TH/2}}
+function polygon(points,fill,stroke){
+  ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);
+  for(let i=1;i<points.length;i++)ctx.lineTo(points[i][0],points[i][1]);
+  ctx.closePath();ctx.fillStyle=fill;ctx.fill();
+  if(stroke){ctx.strokeStyle=stroke;ctx.stroke()}
+}
+const palettes={
+ paper:["#252320","#37332c"],room:["#30332f","#3e423b"],
+ forest:["#192925","#284034"],cafe:["#34302b","#464038"],
+ factory:["#272e32","#394248"],water:["#26383c","#355057"],
+ heat:["#615143","#88715a"],memory:["#272632","#393443"],boss:["#30252d","#47313a"]
+};
+
+const ATLAS_CELL = 96;
+const ATLAS_COLS = 8;
+
+const spriteNames = [
+  ...Object.keys(palettes).flatMap(tone => [
+    `floor:${tone}:0`,
+    `floor:${tone}:1`
+  ]),
+  "shadow", "metal", "water", "wall", "tree",
+  "goal", "box",
+  "player:0", "player:1",
+  "enemy:0", "enemy:1",
+  "boss:0", "boss:1",
+  "object"
+];
+
+const atlas = document.createElement("canvas");
+atlas.width = ATLAS_COLS * ATLAS_CELL;
+atlas.height = Math.ceil(spriteNames.length / ATLAS_COLS) * ATLAS_CELL;
+const ac = atlas.getContext("2d");
+const spriteIndex = Object.fromEntries(
+  spriteNames.map((name, index) => [name, index])
+);
+
+function atlasPolygon(points, fill, stroke) {
+  ac.beginPath();
+  ac.moveTo(points[0][0], points[0][1]);
+  for (let i = 1; i < points.length; i++) {
+    ac.lineTo(points[i][0], points[i][1]);
+  }
+  ac.closePath();
+  ac.fillStyle = fill;
+  ac.fill();
+  if (stroke) {
+    ac.strokeStyle = stroke;
+    ac.lineWidth = 1;
+    ac.stroke();
+  }
+}
+
+function atlasDiamond(fill) {
+  atlasPolygon(
+    [[0, -17], [29, 0], [0, 17], [-29, 0]],
+    fill,
+    "#ffffff20"
+  );
+}
+
+// Стабильная случайность: текстура генерируется только один раз.
+function atlasRandom(seed) {
+  let state = seed + 1;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
+function paintGround(name, index) {
+  const random = atlasRandom(index * 73);
+
+  let color;
+  if (name.startsWith("floor:")) {
+    const [, tone, variant] = name.split(":");
+    color = palettes[tone][Number(variant)];
+  } else {
+    color = {
+      shadow: "#152029",
+      metal: "#526066",
+      water: "#29505b",
+      wall: "#171e20",
+      tree: "#15231e"
+    }[name];
+  }
+
+  atlasDiamond(color);
+
+  // Неровная поверхность, запечённая непосредственно в спрайт.
+  for (let i = 0; i < 25; i++) {
+    const x = (random() - .5) * 55;
+    const y = (random() - .5) * 30;
+    if (Math.abs(x) / 29 + Math.abs(y) / 17 > .85) continue;
+
+    ac.fillStyle = random() > .5 ? "#ffffff16" : "#00000030";
+    ac.fillRect(x, y, 1 + random() * 3, 1 + random() * 2);
+  }
+
+  if (name === "metal") {
+    ac.strokeStyle = "#b1bac05e";
+    ac.beginPath();
+    ac.moveTo(-19, -2);
+    ac.lineTo(7, 12);
+    ac.moveTo(-4, -12);
+    ac.lineTo(21, 2);
+    ac.stroke();
+
+    ac.fillStyle = "#c1c6c1";
+    ac.fillRect(-13, -4, 2, 2);
+    ac.fillRect(12, 4, 2, 2);
+  }
+
+  if (name === "water") {
+    ac.strokeStyle = "#9bc9d150";
+    ac.beginPath();
+    ac.moveTo(-17, -2);
+    ac.lineTo(-3, -2);
+    ac.moveTo(3, 5);
+    ac.lineTo(18, 5);
+    ac.stroke();
+  }
+
+  if (name === "wall") {
+    // Стена выступает над изометрическим полом.
+    atlasPolygon(
+      [[-18, -43], [0, -53], [18, -43], [0, -33]],
+      "#455054", "#788286"
+    );
+    atlasPolygon(
+      [[-18, -43], [0, -33], [0, -2], [-18, -12]],
+      "#252e32", "#586367"
+    );
+    atlasPolygon(
+      [[18, -43], [0, -33], [0, -2], [18, -12]],
+      "#303b40", "#586367"
+    );
+    ac.strokeStyle = "#12181b";
+    ac.beginPath();
+    ac.moveTo(-13, -25);
+    ac.lineTo(-5, -20);
+    ac.lineTo(-2, -14);
+    ac.stroke();
+  }
+
+  if (name === "tree") {
+    atlasPolygon(
+      [[-5, -43], [5, -43], [7, -5], [-6, -7]],
+      "#58463b", "#7d6650"
+    );
+
+    for (const [x, y, radius, shade] of [
+      [-12, -47, 15, "#274538"],
+      [9, -52, 17, "#325744"],
+      [0, -63, 18, "#3b614a"],
+      [-8, -69, 10, "#496b4c"]
+    ]) {
+      ac.fillStyle = shade;
+      ac.beginPath();
+      ac.arc(x, y, radius, 0, Math.PI * 2);
+      ac.fill();
+    }
+  }
+}
+
+function paintGoal() {
+  const glow = ac.createRadialGradient(0, 0, 2, 0, 0, 23);
+  glow.addColorStop(0, "#fff8caee");
+  glow.addColorStop(.45, "#e9d99080");
+  glow.addColorStop(1, "#e9d99000");
+
+  ac.fillStyle = glow;
+  ac.beginPath();
+  ac.ellipse(0, 0, 24, 13, 0, 0, Math.PI * 2);
+  ac.fill();
+
+  ac.strokeStyle = "#f0e3a6";
+  ac.beginPath();
+  ac.ellipse(0, 0, 15, 8, 0, 0, Math.PI * 2);
+  ac.stroke();
+}
+
+function paintBox() {
+  atlasPolygon(
+    [[-16, -13], [0, -22], [16, -13], [0, -4]],
+    "#aa8760", "#dbc096"
+  );
+  atlasPolygon(
+    [[-16, -13], [0, -4], [0, 10], [-16, 1]],
+    "#674b35", "#ad8962"
+  );
+  atlasPolygon(
+    [[16, -13], [0, -4], [0, 10], [16, 1]],
+    "#805c3e", "#bd976b"
+  );
+
+  ac.strokeStyle = "#493225";
+  ac.lineWidth = 2;
+  ac.beginPath();
+  ac.moveTo(-10, -11);
+  ac.lineTo(5, -4);
+  ac.moveTo(8, -15);
+  ac.lineTo(-6, -7);
+  ac.stroke();
+
+  ac.fillStyle = "#d5b389";
+  ac.fillRect(-13, -11, 3, 3);
+  ac.fillRect(10, -11, 3, 3);
+}
+
+function paintPerson(kind, frame) {
+  const boss = kind === "boss";
+  const playerSprite = kind === "player";
+  const step = frame ? 3 : -3;
+  const coat = playerSprite
+    ? "#b8b7a6"
+    : boss ? "#9b5556" : "#886a61";
+  const dark = playerSprite
+    ? "#404849"
+    : boss ? "#552b35" : "#44383a";
+
+  // Тень на полу.
+  ac.fillStyle = "#00000070";
+  ac.beginPath();
+  ac.ellipse(0, 2, boss ? 18 : 12, 5, 0, 0, Math.PI * 2);
+  ac.fill();
+
+  // Ноги: два кадра дают простую анимацию шага.
+  atlasPolygon(
+    [[-7, -13], [-1, -13], [-2 + step, 3], [-9 + step, 3]],
+    dark
+  );
+  atlasPolygon(
+    [[1, -13], [7, -13], [9 - step, 3], [2 - step, 3]],
+    "#252c30"
+  );
+
+  // Руки.
+  atlasPolygon(
+    [[-9, -31], [-5, -29], [-10, -12], [-14, -15]],
+    dark
+  );
+  atlasPolygon(
+    [[5, -29], [10, -30], [15, -14], [10, -11]],
+    dark
+  );
+
+  // Тело и воротник.
+  atlasPolygon(
+    [[-8, -31], [8, -31], [11, -11], [-11, -11]],
+    coat, "#151c1e"
+  );
+  atlasPolygon(
+    [[-5, -32], [0, -26], [5, -32]],
+    playerSprite ? "#5c6867" : "#473333"
+  );
+
+  // Голова.
+  ac.fillStyle = playerSprite ? "#b8a18d" : "#a18476";
+  ac.beginPath();
+  ac.arc(0, -38, boss ? 9 : 7, 0, Math.PI * 2);
+  ac.fill();
+
+  ac.fillStyle = playerSprite ? "#353638" : "#322c30";
+  ac.beginPath();
+  ac.arc(-1, -41, boss ? 9 : 7, Math.PI, Math.PI * 1.9);
+  ac.fill();
+
+  if (boss) {
+    ac.strokeStyle = "#d27e75";
+    ac.lineWidth = 2;
+    ac.beginPath();
+    ac.moveTo(-12, -32);
+    ac.lineTo(-20, -20);
+    ac.moveTo(12, -32);
+    ac.lineTo(20, -20);
+    ac.stroke();
+  }
+}
+
+function paintObject() {
+  const glow = ac.createRadialGradient(0, -15, 1, 0, -15, 23);
+  glow.addColorStop(0, "#fff1b6bb");
+  glow.addColorStop(1, "#fff1b600");
+  ac.fillStyle = glow;
+  ac.beginPath();
+  ac.arc(0, -15, 23, 0, Math.PI * 2);
+  ac.fill();
+
+  ac.fillStyle = "#e9d09a";
+  ac.beginPath();
+  ac.moveTo(0, -25);
+  ac.lineTo(7, -15);
+  ac.lineTo(0, -5);
+  ac.lineTo(-7, -15);
+  ac.closePath();
+  ac.fill();
+}
+
+spriteNames.forEach((name, index) => {
+  const column = index % ATLAS_COLS;
+  const row = Math.floor(index / ATLAS_COLS);
+
+  ac.save();
+  ac.translate(
+    column * ATLAS_CELL + 48,
+    row * ATLAS_CELL + 64
+  );
+
+  if (
+    name.startsWith("floor:") ||
+    ["shadow", "metal", "water", "wall", "tree"].includes(name)
+  ) {
+    paintGround(name, index);
+  } else if (name === "goal") {
+    paintGoal();
+  } else if (name === "box") {
+    paintBox();
+  } else if (name === "object") {
+    paintObject();
+  } else {
+    const [kind, frame] = name.split(":");
+    paintPerson(kind, Number(frame));
+  }
+
+  ac.restore();
+});
+
+function drawSprite(name, x, y) {
+  const index = spriteIndex[name];
+  if (index === undefined) return;
+
+  ctx.drawImage(
+    atlas,
+    (index % ATLAS_COLS) * ATLAS_CELL,
+    Math.floor(index / ATLAS_COLS) * ATLAS_CELL,
+    ATLAS_CELL,
+    ATLAS_CELL,
+    x - 48,
+    y - 64,
+    ATLAS_CELL,
+    ATLAS_CELL
+  );
+}
+
+function drawTile(x,y){
+  const p=pos(x,y), t=tile(x,y), tone=scenes[stage].tone;
+  let c=palettes[tone][(x+y)%2];
+  if(t==="wall")c=tone==="forest"?"#101b19":"#14191c";
+  if(t==="shadow")c="#111c22";
+  if(t==="metal")c="#526066";
+  if(t==="water")c="#244c55";
+  polygon([[p.x,p.y-TH/2],[p.x+TW/2,p.y],[p.x,p.y+TH/2],[p.x-TW/2,p.y]],c,"#ffffff0b");
+  if(t==="metal"||t==="water"){
+    ctx.strokeStyle=t==="metal"?"#ffffff26":"#91bccb33";
+    ctx.beginPath();ctx.moveTo(p.x-12,p.y);ctx.lineTo(p.x+12,p.y);ctx.stroke();
+  }
+  if(t==="wall"&&x>0&&y>0&&x<W-1&&y<H-1){
+    ctx.fillStyle="#0b1214";ctx.fillRect(p.x-4,p.y-27,8,23);
+  }
+}
+function text(s,x,y,color="#e5e5de",size=13,align="center"){
+  ctx.fillStyle=color;ctx.font=`${size}px system-ui,sans-serif`;
+  ctx.textAlign=align;ctx.fillText(s,x,y);
+}
+function drawObject(x,y,label){
+  const p=pos(x,y);
+  ctx.fillStyle="#d6b987";
+  ctx.beginPath();ctx.arc(p.x,p.y-13,5,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle="#dbc795aa";ctx.beginPath();ctx.arc(p.x,p.y-13,10,0,Math.PI*2);ctx.stroke();
+  if(dist(player,{x,y})<=2)text(label,p.x,p.y-27,"#f4d6a3",12);
+}
+function drawBox(b){
+  const p=pos(b.x,b.y);
+  polygon([[p.x-15,p.y-13],[p.x,p.y-21],[p.x+15,p.y-13],[p.x,p.y-5]],"#8b775b","#c0a47b");
+  polygon([[p.x-15,p.y-13],[p.x,p.y-5],[p.x,p.y+9],[p.x-15,p.y+1]],"#584537","#a78760");
+  polygon([[p.x+15,p.y-13],[p.x,p.y-5],[p.x,p.y+9],[p.x+15,p.y+1]],"#6f5540","#a78760");
+  ctx.strokeStyle="#392a22";ctx.beginPath();ctx.moveTo(p.x-11,p.y-13);ctx.lineTo(p.x+2,p.y-6);ctx.stroke();
+}
+function drawFigure(x,y,color,name,boss=false){
+  const p=pos(x,y);
+  ctx.fillStyle="#0008";ctx.beginPath();ctx.ellipse(p.x,p.y+3,boss?18:12,6,0,0,7);ctx.fill();
+  ctx.fillStyle=color;
+  ctx.beginPath();ctx.moveTo(p.x,p.y-31);
+  ctx.lineTo(p.x+(boss?13:8),p.y-11);ctx.lineTo(p.x+8,p.y+3);
+  ctx.lineTo(p.x-8,p.y+3);ctx.lineTo(p.x-(boss?13:8),p.y-11);
+  ctx.closePath();ctx.fill();
+  ctx.beginPath();ctx.arc(p.x,p.y-30,boss?9:7,0,7);ctx.fill();
+  if(name&&dist(player,{x,y})<5)text(name,p.x,p.y-48,"#e4c0b6",11);
+}
+function draw(){
+  const s=scenes[stage],tone=s.tone;
+  const grad=ctx.createLinearGradient(0,0,0,650);
+  grad.addColorStop(0,tone==="heat"?"#695747":"#11171a");
+  grad.addColorStop(1,"#070b0d");ctx.fillStyle=grad;ctx.fillRect(0,0,960,650);
+  if(stage===0){
+    ctx.fillStyle="#c3b9a3";ctx.save();ctx.translate(480,320);ctx.rotate(-.04);
+    ctx.fillRect(-260,-190,520,370);ctx.restore();
+    text("5 JULY 1993",480,205,"#292621",26);
+    text("EARTHQUAKE",480,275,"#292621",44);
+    text("JOHN      SOPHIA",480,335,"#292621",22);
+    text("EMILY STANFORD",480,382,"#292621",18);
+  }else{
+    for(let sum=0;sum<W+H;sum++)
+      for(let y=0;y<H;y++){let x=sum-y;if(x>=0&&x<W)drawTile(x,y)}
+    if(boxes.length)for(const b of boxes){
+      const p=pos(b.goalX,b.y);
+      ctx.fillStyle="#e9e3a733";ctx.beginPath();ctx.ellipse(p.x,p.y,16,9,0,0,7);ctx.fill();
+      ctx.strokeStyle="#e9d999";ctx.stroke();
+    }
+    for(const o of s.objects||[])drawObject(o[0],o[1],o[2]);
+    const figures=[
+      ...boxes.map(b=>({order:b.x+b.y,fn:()=>drawBox(b)})),
+      ...enemies.filter(e=>e.hp>0).map(e=>({order:e.x+e.y,fn:()=>drawFigure(e.x,e.y,e.boss?"#b55b57":"#a2786b",e.name,e.boss)})),
+      {order:player.x+player.y,fn:()=>drawFigure(player.x,player.y,stage===10?"#d6b591":"#dadbd2","",false)}
+    ];
+    figures.sort((a,b)=>a.order-b.order).forEach(o=>o.fn());
+  }
+  ctx.fillStyle="#091013c9";ctx.fillRect(17,15,565,71);
+  text(s.name,31,39,"#e5ded2",18,"left");
+  text(s.place,31,65,"#b7bebc",13,"left");
+  if(s.time){
+    text("TIME  "+Math.ceil(timer),918,47,timer<20?"#f19c88":"#e5d5a2",26,"right");
+  }
+  if(notice&&performance.now()<noticeUntil){
+    ctx.fillStyle="#0b1114dd";ctx.fillRect(130,558,700,51);
+    text(notice,480,590,"#e8ddc5",16);
+  }
+  if(modal.length){
+    ctx.fillStyle="#020506bb";ctx.fillRect(0,0,960,650);
+    ctx.fillStyle="#161d20";ctx.fillRect(90,400,780,188);
+    ctx.strokeStyle="#77817c";ctx.strokeRect(90,400,780,188);
+    const words=modal[0].split(" "),lines=[];let line="";
+    for(const word of words){
+      if((line+" "+word).length>69){lines.push(line);line=word}
+      else line+=(line?" ":"")+word;
+    }
+    if(line)lines.push(line);
+    lines.forEach((l,i)=>text(l,125,451+i*31,"#eee9dc",19,"left"));
+    text("ENTER / КЛИК  →",839,568,"#b6b6aa",12,"right");
+  }
+  if(ending&&!modal.length){
+    ctx.fillStyle="#020506c9";ctx.fillRect(0,0,960,650);
+    text("NOWHERE",480,284,"#eee9dc",42);
+    text("THE END",480,337,"#d8d0be",23);
+    text("R — новая игра",480,405,"#aeb6b4",15);
+  }
+  ui.chapter.textContent=s.name;
+  ui.objective.textContent=s.objective;
+  ui.health.textContent=`Здоровье: ${Math.ceil(player.hp)}`;
+  ui.inventory.textContent=`${player.weapon} · 9 mm: ${player.ammo} · 12 mm: ${player.shells}`;
+}
+function input(code){
+  if(code==="Enter"){if(modal.length)nextModal();return}
+  if(code==="KeyR"&&ending){restart();return}
+  if(modal.length)return;
+  if(code==="KeyE")interact();
+  if(code==="Space")attack();
+  if(code==="KeyQ")cycleWeapon();
+  const d={
+    ArrowUp:[0,-1],KeyW:[0,-1],ArrowDown:[0,1],KeyS:[0,1],
+    ArrowLeft:[-1,0],KeyA:[-1,0],ArrowRight:[1,0],KeyD:[1,0]
+  }[code];
+  if(d&&performance.now()>moveAt){move(...d);moveAt=performance.now()+(stage===10?95:125)}
+}
+document.addEventListener("keydown",e=>{
+  if(["Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.code))e.preventDefault();
+  keys.add(e.code);
+  if(!e.repeat)input(e.code);
+});
+document.addEventListener("keyup",e=>keys.delete(e.code));
+canvas.addEventListener("pointerdown",()=>{if(modal.length)nextModal()});
+document.querySelectorAll("#touch button").forEach(b=>{
+  b.addEventListener("pointerdown",e=>{e.preventDefault();input(b.dataset.key)});
+});
+function loop(now){
+  const dt=Math.min((now-last)/1000,.1);last=now;
+  if(!modal.length&&!ending&&stage===10){
+    timer-=dt;
+    if(timer<=0){player.hp=100;message("Время вышло. Попробуйте ещё раз.");setup(10,true)}
+  }
+  if(!modal.length&&!ending&&now>enemyAt){enemyTick();enemyAt=now+(stage===10?280:500)}
+  for(const k of keys)if(["KeyW","KeyA","KeyS","KeyD","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(k))input(k);
+  draw();requestAnimationFrame(loop);
+}
+setup(0);
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
