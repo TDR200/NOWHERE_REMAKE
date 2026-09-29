@@ -1,4 +1,4 @@
-# NOWHERE
+<img width="1672" height="941" alt="mainscreen" src="https://github.com/user-attachments/assets/94375558-0cef-4d15-a026-9c0d95a039e6" /># NOWHERE
 
 > **Atmospheric psychological horror game**
 > Browser prototype / Vertical Slice
@@ -8,7 +8,6 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-blue)
 ![Vite](https://img.shields.io/badge/Vite-purple)
 ![Platform](https://img.shields.io/badge/platform-Web-blue)
-![Uploading mainscreen.png…]()
 
 ---
 
