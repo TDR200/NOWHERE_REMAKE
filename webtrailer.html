@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOWHERE — Official Teaser Trailer (Pixel Art Edition)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  body {
+    background: #030405;
+    color: #d8dfd9;
+    font-family: 'Courier New', Courier, monospace;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  #viewport {
+    position: relative;
+    width: min(92vw, 1120px);
+    aspect-ratio: 16 / 9;
+    background: #000;
+    border: 1px solid #262c28;
+    box-shadow: 0 20px 80px rgba(0,0,0,0.95);
+    overflow: hidden;
+  }
+  canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  /* Эффект ЭЛТ-развёртки и виньетки */
+  #crt-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.38) 50%),
+      radial-gradient(circle at center, transparent 58%, rgba(0, 0, 0, 0.85) 100%);
+    background-size: 100% 4px, 100% 100%;
+    z-index: 5;
+  }
+  #subtitle-bar {
+    position: absolute;
+    bottom: 7%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 84%;
+    text-align: center;
+    font-size: clamp(13px, 1.6vw, 21px);
+    letter-spacing: 1.5px;
+    color: #e6e1d6;
+    text-shadow: 0 2px 6px #000, 0 0 12px #000;
+    z-index: 6;
+    pointer-events: none;
+    min-height: 28px;
+  }
+  #hud-corner {
+    position: absolute;
+    top: 16px;
+    right: 20px;
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: rgba(180, 195, 185, 0.65);
+    z-index: 6;
+  }
+  #start-screen {
+    position: absolute;
+    inset: 0;
+    background: rgba(5, 6, 8, 0.92);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    z-index: 10;
+  }
+  .btn-play {
+    background: #14191d;
+    color: #e4ebe6;
+    border: 1px solid #8c3b3b;
+    padding: 14px 28px;
+    font-family: inherit;
+    font-size: 15px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: 0.2s;
+  }
+  .btn-play:hover {
+    background: #8c3b3b;
+    color: #fff;
+    box-shadow: 0 0 25px rgba(168, 56, 59, 0.6);
+  }
+  #timeline {
+    width: min(92vw, 1120px);
+    height: 4px;
+    background: #15181b;
+    margin-top: 10px;
+    position: relative;
+  }
+  #progress {
+    height: 100%;
+    width: 0%;
+    background: #a8383b;
+  }
+</style>
+</head>
+<body>
+
+<div id="viewport">
+  <!-- Низкое разрешение 320x180 для честного пиксель-арта -->
+  <canvas id="pixel-canvas" width="320" height="180"></canvas>
+  <div id="crt-overlay"></div>
+  <div id="hud-corner">REC // 1993-07-05</div>
+  <div id="subtitle-bar"></div>
+
+  <div id="start-screen">
+    <div style="letter-spacing:8px; font-size:32px; color:#d8dfd9;">NOWHERE</div>
+    <div style="font-size:12px; color:#7f8c84; letter-spacing:3px;">PSYCHOLOGICAL SURVIVAL HORROR — TEASER TRAILER</div>
+    <button class="btn-play" id="btn-start">▶ ЗАПУСТИТЬ ТРЕЙЛЕР (СО ЗВУКОМ)</button>
+  </div>
+</div>
+
+<div id="timeline"><div id="progress"></div></div>
+
+<script>
+const canvas = document.getElementById('pixel-canvas');
+const ctx = canvas.getContext('2d');
+const subBar = document.getElementById('subtitle-bar');
+const hudCorner = document.getElementById('hud-corner');
+const progressEl = document.getElementById('progress');
+const startScreen = document.getElementById('start-screen');
+
+const DURATION = 46.0; // секунд
+let playing = false;
+let startTime = 0;
+let triggeredCues = new Set();
+
+// ==========================================
+// ПРОЦЕДУРНЫЙ ХОРРОР-САУНДТРЕК (WebAudio)
+// ==========================================
+class TrailerAudio {
+  constructor() {
+    this.ctx = null;
+    this.droneOsc = null;
+  }
+  init() {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    this.ctx = new AudioCtx();
+
+    // Постоянный мрачный аналоговый дрон
+    this.droneOsc = this.ctx.createOscillator();
+    const droneOsc2 = this.ctx.createOscillator();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+
+    this.droneOsc.type = 'sawtooth';
+    this.droneOsc.frequency.value = 46.25; // F#1
+    droneOsc2.type = 'triangle';
+    droneOsc2.frequency.value = 69.3; // C#2 (квинта)
+
+    filter.type = 'lowpass';
+    filter.frequency.value = 160;
+
+    gain.gain.value = 0.14;
+
+    this.droneOsc.connect(filter);
+    droneOsc2.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    this.droneOsc.start();
+    droneOsc2.start();
+  }
+  heartbeat() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    [0, 0.24].forEach((offset, i) => {
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(i === 0 ? 58 : 48, now + offset);
+      osc.frequency.exponentialRampToValueAtTime(24, now + offset + 0.18);
+      g.gain.setValueAtTime(0.28, now + offset);
+      g.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.2);
+      osc.connect(g);
+      g.connect(this.ctx.destination);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.21);
+    });
+  }
+  clang() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(480, now);
+    osc.frequency.exponentialRampToValueAtTime(92, now + 0.45);
+    g.gain.setValueAtTime(0.22, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+    osc.connect(g);
+    g.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.5);
+  }
+  click() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(1100, now);
+    g.gain.setValueAtTime(0.12, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+    osc.connect(g);
+    g.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.045);
+  }
+  earthquake() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(38, now);
+    osc.frequency.linearRampToValueAtTime(21, now + 2.8);
+    g.gain.setValueAtTime(0.32, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 2.9);
+    osc.connect(g);
+    g.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 3.0);
+  }
+  cicadaBurst() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(2600, now);
+    g.gain.setValueAtTime(0.05, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 1.8);
+    osc.connect(g);
+    g.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 1.85);
+  }
+}
+const audio = new TrailerAudio();
+
+// ==========================================
+// ОТРИСОВКА ПИКСЕЛЬНЫХ СЦЕН ТРЕЙЛЕРА
+// ==========================================
+function drawNoise(alpha = 0.06) {
+  ctx.fillStyle = `rgba(200, 210, 205, ${alpha})`;
+  for (let i = 0; i < 140; i++) {
+    const x = (Math.random() * 320) | 0;
+    const y = (Math.random() * 180) | 0;
+    ctx.fillRect(x, y, 1, 1);
+  }
+}
+
+function drawHUD(hp = 65, battery = 3) {
+  // Левый нижний индикатор здоровья в стиле скриншотов
+  ctx.fillStyle = '#4c5750';
+  ctx.fillRect(10, 162, 52, 6);
+  ctx.fillStyle = '#7e9183';
+  ctx.fillRect(11, 163, (50 * hp / 100) | 0, 4);
+  // Батарея справа внизу
+  ctx.strokeStyle = '#68756d';
+  ctx.strokeRect(298, 156, 10, 14);
+  for (let i = 0; i < battery; i++) {
+    ctx.fillStyle = '#8fa696';
+    ctx.fillRect(300, 166 - i * 4, 6, 3);
+  }
+}
+
+// СЦЕНА 1 (0 - 6с): Газета 5 июля 1993
+function renderSceneNewspaper(t) {
+  ctx.fillStyle = '#08090a';
+  ctx.fillRect(0, 0, 320, 180);
+
+  const panY = Math.floor(t * 3);
+  ctx.fillStyle = '#b8ae99';
+  ctx.fillRect(58, 22 - panY, 204, 145);
+  ctx.fillStyle = '#1b1916';
+  ctx.fillRect(64, 30 - panY, 192, 12);
+
+  ctx.fillStyle = '#1b1916';
+  ctx.font = 'bold 8px Courier New';
+  ctx.fillText('THE CHRONICLE — 5 JULY 1993', 70, 39 - panY);
+
+  // Выделенные красным слова из GDD Scene 00
+  const words = [
+    { y: 58, text: 'DEVASTATING EARTHQUAKE' },
+    { y: 78, text: 'VICTIMS: JOHN & SOPHIA' },
+    { y: 98, text: 'FOUND BY: EMILY STANFORD' }
+  ];
+  words.forEach((w, idx) => {
+    if (t > idx * 1.4 + 0.6) {
+      ctx.fillStyle = 'rgba(155, 42, 42, 0.38)';
+      ctx.fillRect(68, w.y - panY - 7, 150, 10);
+      ctx.fillStyle = '#14110f';
+      ctx.fillText(w.text, 72, w.y - panY);
+    }
+  });
+}
+
+// СЦЕНА 2 (6 - 14с): Лесная дорога, ржавая машина и монстр в тумане (Скриншот 1)
+function renderSceneForestRoad(t) {
+  const localT = t - 6;
+  const lightOn = localT < 5.4; // На 11.4с игрок выключает фонарь, чтобы спрятаться в тени!
+
+  ctx.fillStyle = '#070a09';
+  ctx.fillRect(0, 0, 320, 180);
+
+  // Диагональная дорога
+  ctx.fillStyle = lightOn ? '#1e2324' : '#101415';
+  ctx.beginPath();
+  ctx.moveTo(40, 180);
+  ctx.lineTo(195, 35);
+  ctx.lineTo(275, 35);
+  ctx.lineTo(175, 180);
+  ctx.fill();
+
+  // Силуэты елей слева и справа
+  ctx.fillStyle = '#050807';
+  for (let i = 0; i < 6; i++) {
+    ctx.fillRect(12 + i * 18, 10, 14, 140);
+    ctx.fillRect(245 + (i % 3) * 22, 15, 16, 150);
+  }
+
+  // Ржавая машина на обочине справа
+  ctx.fillStyle = lightOn ? '#4a352b' : '#241a16';
+  ctx.fillRect(188, 92, 68, 28);
+  ctx.fillStyle = '#121617';
+  ctx.fillRect(198, 96, 22, 10);
+
+  // Конус фонаря Джона
+  if (lightOn) {
+    const sway = Math.sin(localT * 2.5) * 12;
+    const grad = ctx.createRadialGradient(115, 125, 4, 175 + sway, 72, 95);
+    grad.addColorStop(0, 'rgba(235, 240, 215, 0.55)');
+    grad.addColorStop(1, 'rgba(10, 15, 14, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(115, 125);
+    ctx.lineTo(145 + sway, 40);
+    ctx.lineTo(225 + sway, 65);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Высокий монстр впереди в тумане
+  const monsterY = Math.floor(48 + localT * 2.2);
+  ctx.fillStyle = lightOn ? '#2c2220' : '#0d1011';
+  ctx.fillRect(184, monsterY, 14, 34); // торс
+  ctx.fillRect(179, monsterY + 6, 4, 22); // длинные руки
+  ctx.fillRect(199, monsterY + 6, 4, 22);
+
+  // Силуэт Джона со спины
+  ctx.fillStyle = '#12181a';
+  ctx.fillRect(104, 112, 14, 42);
+  ctx.fillStyle = '#273336';
+  ctx.fillRect(105, 118, 12, 20);
+
+  drawHUD(70, lightOn ? 3 : 0);
+}
+
+// СЦЕНА 3 (14 - 23с): Eye Jack Café — ракурс снизу от ботинка и юбки Софии (Скриншот 2)
+function renderSceneEyeJack(t) {
+  const localT = t - 14;
+  const sophiaGone = localT > 6.2; // На 20.2с София бесследно исчезает!
+
+  // Тёмный зал бара и дощатый пол в нижней перспективе
+  ctx.fillStyle = '#14110e';
+  ctx.fillRect(0, 0, 320, 180);
+
+  // Доски пола на переднем плане
+  ctx.fillStyle = '#1f1914';
+  ctx.fillRect(0, 118, 320, 62);
+  ctx.strokeStyle = '#0e0b08';
+  for (let i = 0; i < 8; i++) {
+    ctx.beginPath();
+    ctx.moveTo(i * 45, 118);
+    ctx.lineTo(i * 60 - 40, 180);
+    ctx.stroke();
+  }
+
+  // Барная стойка и тусклая неоновая вывеска в глубине
+  ctx.fillStyle = '#292119';
+  ctx.fillRect(135, 76, 75, 42);
+  ctx.fillStyle = '#7a2e2e';
+  ctx.fillRect(148, 52, 26, 8);
+
+  // Джон у входной двери слева с фонариком
+  ctx.fillStyle = '#151816';
+  ctx.fillRect(92, 62, 16, 56);
+  // Луч фонаря Джона вправо
+  const beam = ctx.createLinearGradient(108, 86, 195, 86);
+  beam.addColorStop(0, 'rgba(235, 228, 195, 0.48)');
+  beam.addColorStop(1, 'rgba(235, 228, 195, 0)');
+  ctx.fillStyle = beam;
+  ctx.beginPath();
+  ctx.moveTo(108, 86);
+  ctx.lineTo(195, 68);
+  ctx.lineTo(195, 108);
+  ctx.closePath();
+  ctx.fill();
+
+  // ПЕРЕДНИЙ ПЛАН СПРАВА: Юбка и ботинок Софии (крупный план снизу)
+  if (!sophiaGone) {
+    // Длинная текстурная юбка
+    ctx.fillStyle = '#3d3a30';
+    ctx.beginPath();
+    ctx.moveTo(235, 15);
+    ctx.lineTo(320, 10);
+    ctx.lineTo(315, 118);
+    ctx.lineTo(208, 106);
+    ctx.closePath();
+    ctx.fill();
+
+    // Голень и тёмный поношенный ботинок на первом плане
+    ctx.fillStyle = '#6e5849';
+    ctx.fillRect(222, 104, 18, 32);
+    ctx.fillStyle = '#1c1d1b';
+    ctx.fillRect(184, 132, 62, 24);
+    ctx.fillStyle = '#383a36';
+    ctx.fillRect(182, 148, 64, 6); // подошва
+  } else if (localT < 6.45) {
+    // Визуальный глитч в момент исчезновения Софии
+    ctx.fillStyle = 'rgba(210, 220, 215, 0.25)';
+    ctx.fillRect(180, 20, 130, 140);
+  }
+
+  drawHUD(65, 2);
+}
+
+// СЦЕНА 4 (23 - 30с): Склад Майкла — 3 ящика, светящиеся кольца и металлический пол (CLANG)
+function renderSceneWarehouse(t) {
+  const localT = t - 23;
+  ctx.fillStyle = '#0d1012';
+  ctx.fillRect(0, 0, 320, 180);
+
+  // Красный аварийный фонарь на стене слева
+  const redPulse = 0.35 + Math.sin(localT * 6) * 0.15;
+  const redGrad = ctx.createRadialGradient(88, 34, 2, 88, 34, 70);
+  redGrad.addColorStop(0, `rgba(220, 50, 45, ${redPulse})`);
+  redGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = redGrad;
+  ctx.fillRect(0, 0, 320, 180);
+  ctx.fillStyle = '#ff4a44';
+  ctx.fillRect(85, 28, 6, 11);
+
+  // 3 оранжевых светящихся кольца на полу (GDD Scene 14)
+  ctx.strokeStyle = '#e08b36';
+  ctx.lineWidth = 2;
+  [[162, 128], [218, 112], [212, 134]].forEach(([cx, cy]) => {
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 12, 6, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+
+  // Деревянные ящики
+  ctx.fillStyle = '#523c28';
+  ctx.fillRect(138, 76, 38, 38);
+  ctx.fillRect(172, 86, 38, 38);
+  ctx.fillStyle = '#6b4f35';
+  ctx.fillRect(160, 52, 36, 34);
+
+  // Звуковая волна по металлической решётке пола
+  const waveR = ((localT * 42) % 65);
+  ctx.strokeStyle = `rgba(220, 180, 110, ${1 - waveR / 65})`;
+  ctx.beginPath();
+  ctx.ellipse(110, 118, waveR, waveR * 0.5, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Лукас
+  ctx.fillStyle = '#182024';
+  ctx.fillRect(102, 74, 16, 46);
+  drawHUD(55, 2);
+}
+
+// СЦЕНА 5 (30 - 38с): Комната 203 и Эмили среди ржавых кроватей (Скриншот 3)
+function renderSceneRoom203(t) {
+  const localT = t - 30;
+  ctx.fillStyle = '#050607';
+  ctx.fillRect(0, 0, 320, 180);
+
+  // Изометрическая коробка полуразрушенной комнаты 203
+  ctx.fillStyle = '#252b27';
+  ctx.fillRect(48, 22, 224, 136);
+  ctx.fillStyle = '#181d1a';
+  ctx.fillRect(54, 64, 212, 90);
+
+  // Дверь с номером 203 слева
+  ctx.fillStyle = '#39403a';
+  ctx.fillRect(62, 36, 24, 52);
+
+  // Старые больничные кровати
+  ctx.fillStyle = '#2f3833';
+  [[105, 58], [145, 44], [170, 108], [215, 88]].forEach(([bx, by]) => {
+    ctx.fillRect(bx, by, 42, 22);
+  });
+
+  // Эмили в светлом платье под качающейся лампочкой
+  const glow = ctx.createRadialGradient(182, 78, 2, 182, 78, 52);
+  glow.addColorStop(0, 'rgba(215, 230, 215, 0.45)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(120, 24, 120, 110);
+
+  ctx.fillStyle = '#b9c4bc';
+  ctx.fillRect(177, 66, 11, 34);
+
+  // Игрок с фонариком перед Эмили
+  ctx.fillStyle = '#151b1d';
+  ctx.fillRect(124, 82, 15, 44);
+
+  ctx.fillStyle = '#d8dfd9';
+  ctx.font = '7px Courier New';
+  ctx.fillText('[E] Talk', 194, 82);
+}
+
+// СЦЕНА 6 (38 - 46с): Финальное слияние (JOHN LUCAS) и титр NOWHERE
+function renderSceneFinale(t) {
+  const localT = t - 38;
+  const shakeX = localT < 2.5 ? ((Math.random() - 0.5) * 8) | 0 : 0;
+  const shakeY = localT < 2.5 ? ((Math.random() - 0.5) * 8) | 0 : 0;
+
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+  ctx.fillStyle = '#040506';
+  ctx.fillRect(0, 0, 320, 180);
+
+  ctx.textAlign = 'center';
+  if (localT < 2.8) {
+    ctx.fillStyle = '#a8383b';
+    ctx.font = 'bold 10px Courier New';
+    ctx.fillText('EVERYTHING STARTS HERE', 160, 78);
+    ctx.fillStyle = '#8b9690';
+    ctx.fillText('THE END STARTS HERE', 160, 96);
+    ctx.fillStyle = '#e4ebe6';
+    ctx.font = 'bold 16px Courier New';
+    ctx.fillText('JOHN LUCAS', 160, 122);
+  } else {
+    ctx.fillStyle = '#e2e8e4';
+    ctx.font = 'bold 26px Courier New';
+    ctx.fillText('N O W H E R E', 160, 84);
+    ctx.fillStyle = '#9e3b3b';
+    ctx.font = '8px Courier New';
+    ctx.fillText('FAN REMAKE // CATHERINE OR EMILY', 160, 106);
+  }
+  ctx.textAlign = 'left';
+  ctx.restore();
+}
+
+// ==========================================
+// ТАЙМЛАЙН СУБТИТРОВ И ЗВУКОВЫХ ТРИГГЕРОВ
+// ==========================================
+const CUES = [
+  { t: 0.2, sub: '5 ИЮЛЯ 1993 ГОДА. РАЗРУШИТЕЛЬНОЕ ЗЕМЛЕТРЯСЕНИЕ.', hud: 'PROLOGUE // 1993', sfx: 'heartbeat' },
+  { t: 3.1, sub: 'СРЕДИ ПОГИБШИХ — ДЖОН И СОФИЯ. ИХ ТЕЛА ОБНАРУЖИЛА ЭМИЛИ СТЭНФОРД.', hud: 'PROLOGUE // 1993', sfx: 'heartbeat' },
+  { t: 6.0, sub: 'Свет помогает идти вперёд...', hud: 'ACT II - THE ROAD', sfx: 'click' },
+  { t: 9.2, sub: '...но именно свет выдаёт твоё присутствие.', hud: 'ACT II - THE ROAD', sfx: 'heartbeat' },
+  { t: 11.4, sub: '[ ФОНАРЬ ВЫКЛЮЧЕН — СТЕЛС В ТЕНИ ]', hud: 'STEALTH // SHADOW', sfx: 'click' },
+  { t: 14.0, sub: '«Привет. Ты новый в городе? Меня зовут София...»', hud: 'SCENE 10 - EYE JACK CAFE', sfx: 'heartbeat' },
+  { t: 20.2, sub: '[ Ни крика. Ни следов борьбы. Только пустой зал. ]', hud: 'FLAG // SOPHIA_GONE', sfx: 'clang' },
+  { t: 23.0, sub: 'Каждый шаг по металлу разносится в темноте.', hud: 'ACT III - WAREHOUSE', sfx: 'clang' },
+  { t: 26.5, sub: '«Ты ведь не бросишь меня на этот раз, Лукас?»', hud: 'ROOM 201 // CATHERINE', sfx: 'heartbeat' },
+  { t: 30.0, sub: '«Здравствуй, любимый. Возможно, ещё не поздно начать всё сначала.»', hud: 'SCENE 94 - ROOM 203', sfx: 'cicada' },
+  { t: 38.0, sub: 'ДВЕ ЛИНИИ СЛИВАЮТСЯ В ОДНУ.', hud: 'SCENE 42 - THE MERGE', sfx: 'earthquake' },
+  { t: 41.0, sub: 'КОГО ТЫ ВЫБЕРЕШЬ В КОНЦЕ — НАСТОЯЩЕЕ ИЛИ ПРОШЛОЕ?', hud: 'NOWHERE // REMAKE', sfx: 'heartbeat' }
+];
+
+function loop(now) {
+  if (!playing) return;
+  const elapsed = (now - startTime) / 1000;
+  progressEl.style.width = `${Math.min(100, (elapsed / DURATION) * 100)}%`;
+
+  for (const cue of CUES) {
+    if (elapsed >= cue.t && !triggeredCues.has(cue.t)) {
+      triggeredCues.add(cue.t);
+      subBar.textContent = cue.sub;
+      hudCorner.textContent = cue.hud;
+      if (cue.sfx === 'heartbeat') audio.heartbeat();
+      else if (cue.sfx === 'clang') audio.clang();
+      else if (cue.sfx === 'click') audio.click();
+      else if (cue.sfx === 'earthquake') audio.earthquake();
+      else if (cue.sfx === 'cicada') audio.cicadaBurst();
+    }
+  }
+
+  if (elapsed < 6.0) renderSceneNewspaper(elapsed);
+  else if (elapsed < 14.0) renderSceneForestRoad(elapsed);
+  else if (elapsed < 23.0) renderSceneEyeJack(elapsed);
+  else if (elapsed < 30.0) renderSceneWarehouse(elapsed);
+  else if (elapsed < 38.0) renderSceneRoom203(elapsed);
+  else if (elapsed <= DURATION) renderSceneFinale(elapsed);
+  else {
+    playing = false;
+    startScreen.style.display = 'flex';
+    document.getElementById('btn-start').textContent = '↻ ПОВТОРИТЬ ТРЕЙЛЕР';
+    return;
+  }
+
+  drawNoise(0.06);
+  requestAnimationFrame(loop);
+}
+
+document.getElementById('btn-start').addEventListener('click', () => {
+  if (!audio.ctx) audio.init();
+  triggeredCues.clear();
+  startScreen.style.display = 'none';
+  playing = true;
+  startTime = performance.now();
+  requestAnimationFrame(loop);
+});
+</script>
+</body>
+</html>
+
