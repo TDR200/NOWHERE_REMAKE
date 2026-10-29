@@ -1,0 +1,1859 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOWHERE — Fan Remake (Playable Prototype v0.2)</title>
+<style>
+  :root {
+    --bg: #07080a;
+    --panel: rgba(12, 15, 18, 0.92);
+    --border: rgba(160, 175, 165, 0.25);
+    --text: #d5dcd7;
+    --muted: #7f8c84;
+    --accent: #a8383b;
+    --warn: #d4a359;
+    --ok: #5c9e78;
+  }
+  * { box-sizing: border-box; user-select: none; }
+  body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Courier New', Courier, monospace;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  #topbar {
+    height: 40px;
+    background: #0b0d10;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    font-size: 12px;
+    z-index: 20;
+  }
+  .top-group { display: flex; align-items: center; gap: 10px; }
+  .badge {
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.03);
+    color: var(--text);
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+  .badge.char { border-color: var(--warn); color: #f3d098; font-weight: bold; }
+  .badge.stealth-shadow { border-color: #4f8fba; color: #9cd4ff; }
+  .badge.stealth-light { border-color: var(--warn); color: #ffd280; }
+  .badge.danger { border-color: var(--accent); color: #ff8e90; animation: pulse 0.8s infinite alternate; }
+  @keyframes pulse { from { opacity: 0.6; } to { opacity: 1; } }
+
+  button, select {
+    background: #14181d;
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 4px 9px;
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  button:hover, select:hover { border-color: var(--text); background: #1d232a; }
+
+  #main-wrap {
+    flex: 1;
+    position: relative;
+    display: flex;
+    overflow: hidden;
+  }
+  #game-canvas {
+    flex: 1;
+    display: block;
+    background: #050608;
+    cursor: crosshair;
+  }
+
+  /* Sidebar Debug & Inventory */
+  #side-panel {
+    width: 290px;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font-size: 12px;
+    overflow-y: auto;
+    z-index: 15;
+  }
+  .panel-title {
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 4px;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+  }
+  .inv-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .inv-item {
+    padding: 4px 7px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.04);
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .inv-item.active { border-color: var(--warn); color: #ffd485; background: rgba(212,163,89,0.14); }
+  .flags-box {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 3px;
+    max-height: 220px;
+    overflow-y: auto;
+    font-size: 11px;
+  }
+  .flag-row { display: flex; justify-content: space-between; padding: 2px 4px; background: rgba(0,0,0,0.3); }
+  .flag-on { color: var(--ok); font-weight: bold; }
+  .flag-off { color: #555e58; }
+
+  /* Overlays */
+  #dialogue-box {
+    position: absolute;
+    bottom: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(680px, 88vw);
+    background: rgba(8, 10, 12, 0.94);
+    border: 1px solid rgba(190, 205, 195, 0.35);
+    padding: 16px 20px;
+    z-index: 25;
+    display: none;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.85);
+  }
+  #dlg-speaker {
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--warn);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+  }
+  #dlg-text {
+    font-size: 14px;
+    line-height: 1.55;
+    min-height: 44px;
+    white-space: pre-line;
+  }
+  #dlg-hint {
+    margin-top: 10px;
+    text-align: right;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* Modal Overlay (Newspaper, Photo, Merge, Endings) */
+  #cinema-overlay {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    z-index: 30;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    text-align: center;
+  }
+  .paper-card {
+    max-width: 520px;
+    background: #d8ceb8;
+    color: #191612;
+    padding: 28px;
+    border: 2px solid #595042;
+    box-shadow: 0 0 80px rgba(0,0,0,0.95) inset, 0 0 50px rgba(0,0,0,0.9);
+    font-family: Georgia, serif;
+    text-align: left;
+  }
+  .paper-card h2 { margin: 0 0 8px 0; font-size: 22px; border-bottom: 2px solid #222; padding-bottom: 4px; }
+  .paper-highlight { background: rgba(168, 56, 59, 0.22); padding: 1px 4px; font-weight: bold; }
+  .photo-card {
+    max-width: 440px;
+    background: #181615;
+    border: 8px solid #dfd7c8;
+    color: #e6dfd3;
+    padding: 24px;
+    box-shadow: 0 15px 60px rgba(0,0,0,0.95);
+  }
+  .merge-title {
+    font-size: 46px;
+    letter-spacing: 10px;
+    color: #e2e6e4;
+    text-shadow: 0 0 18px rgba(168,56,59,0.75);
+    margin: 12px 0;
+  }
+  #timer-hud {
+    position: absolute;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 28px;
+    letter-spacing: 4px;
+    color: #ff6b6b;
+    background: rgba(15, 5, 5, 0.85);
+    border: 1px solid #a8383b;
+    padding: 6px 18px;
+    display: none;
+    z-index: 22;
+  }
+  .controls-help {
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+  .controls-help b { color: var(--text); }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="top-group">
+    <strong>NOWHERE — REMAKE</strong>
+    <span id="hud-char" class="badge char">LUCAS</span>
+    <span id="hud-scene" class="badge">SCENE 01</span>
+    <span id="hud-hp" class="badge">HP: 100%</span>
+    <span id="hud-light" class="badge stealth-shadow">STEALTH: NORMAL</span>
+  </div>
+  <div class="top-group">
+    <label for="scene-select" style="color:var(--muted)">Сцена GDD:</label>
+    <select id="scene-select">
+      <option value="scene00">Scene 00: Prologue — 1993 Newspaper</option>
+      <option value="scene01">Act I (Scenes 01–04): Lucas' Room & Box Puzzle</option>
+      <option value="scene02">Act I (Scene 02): Hallway — Talk to Catherine</option>
+      <option value="scene05">Act II (Scenes 05–09): John's House & Shadow Road</option>
+      <option value="scene10">Act II (Scenes 10–12): Eye Jack Café & Sophia</option>
+      <option value="scene13">Act III (Scenes 13–15): Michael's Warehouse & Metal Floor</option>
+      <option value="scene17">Act III/V (Scenes 17–21, 41): Boarding House & Room 203</option>
+      <option value="scene88">Act VIII (Scenes 88–92): Run For Life (80s Timer)</option>
+      <option value="scene94">Act IX (Scenes 94–126): Room 203 — Emily & Final Choice</option>
+    </select>
+    <button id="btn-reset-puzzle">Сбросить комнату</button>
+    <button id="btn-clear-save">Сброс сейва</button>
+  </div>
+</div>
+
+<div id="main-wrap">
+  <canvas id="game-canvas"></canvas>
+
+  <div id="timer-hud">TIME: <span id="timer-val">80.0</span></div>
+
+  <div id="dialogue-box">
+    <div id="dlg-speaker">LUCAS</div>
+    <div id="dlg-text">...</div>
+    <div id="dlg-hint">[E / Space / Клик] — далее</div>
+  </div>
+
+  <div id="cinema-overlay"></div>
+
+  <div id="side-panel">
+    <div>
+      <div class="panel-title">Текущая цель (Objective)</div>
+      <div id="hud-objective" style="color:#f0d290; line-height:1.4;">Исследовать комнату</div>
+    </div>
+
+    <div>
+      <div class="panel-title">Инвентарь и Оружие (Клик = Экип.)</div>
+      <div id="inv-container" class="inv-list"></div>
+    </div>
+
+    <div>
+      <div class="panel-title">Управление</div>
+      <div class="controls-help">
+        <b>WASD / Стрелки</b> — перемещение (по изометрической сетке) и толкание ящиков<br>
+        <b>E / Enter</b> — взаимодействие / диалог / дверь<br>
+        <b>F</b> — включить/выключить фонарь (свет виден врагам!)<br>
+        <b>Space</b> — удар топором / выстрел (привлекает монстров звуком)<br>
+        <b>Клик мышью по клетке</b> — шаг в выбранную клетку
+      </div>
+    </div>
+
+    <div style="flex:1; display:flex; flex-direction:column; min-height:0;">
+      <div class="panel-title">Флаги сценария GDD (Save v1)</div>
+      <div id="flags-container" class="flags-box"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/**
+ * NOWHERE — FAN REMAKE
+ * Рабочий прототип на основе GDD v0.1 / v0.2 и Work Notes.
+ * Изометрическая проекция 64x32, depth = screenY + screenX * 0.001,
+ * механика света/тени, металлический пол (CLANG), коробочные пазлы и флаги сюжета.
+ */
+
+// ==========================================
+// 1. AUDIO ENGINE (WebAudio Procedural Soundscape)
+// ==========================================
+class SoundEngine {
+  constructor() {
+    this.ctx = null;
+    this.cicadaOsc = null;
+    this.cicadaGain = null;
+  }
+  init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AudioCtx();
+    }
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+  playStep(type = 'wood') {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    if (type === 'metal') {
+      // Громкий металлический CLANG (Scene 15 / 48)
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(520, now);
+      osc.frequency.exponentialRampToValueAtTime(110, now + 0.22);
+      gain.gain.setValueAtTime(0.22, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+    } else if (type === 'forest') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(95, now);
+      osc.frequency.exponentialRampToValueAtTime(42, now + 0.09);
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    } else {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(130, now);
+      osc.frequency.exponentialRampToValueAtTime(55, now + 0.07);
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    }
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.25);
+  }
+  playPush() {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(68, now);
+    osc.frequency.linearRampToValueAtTime(48, now + 0.18);
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.21);
+  }
+  playFlashlight() {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(980, now);
+    gain.gain.setValueAtTime(0.07, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.04);
+  }
+  playEarthquake() {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(44, now);
+    osc.frequency.linearRampToValueAtTime(26, now + 2.4);
+    gain.gain.setValueAtTime(0.28, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 2.5);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 2.55);
+  }
+  playAttack(isGun = false) {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = isGun ? 'sawtooth' : 'triangle';
+    osc.frequency.setValueAtTime(isGun ? 320 : 180, now);
+    osc.frequency.exponentialRampToValueAtTime(35, now + (isGun ? 0.22 : 0.12));
+    gain.gain.setValueAtTime(isGun ? 0.28 : 0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.25);
+  }
+  setCicada(active) {
+    this.init();
+    if (!this.ctx) return;
+    if (active && !this.cicadaOsc) {
+      this.cicadaOsc = this.ctx.createOscillator();
+      this.cicadaGain = this.ctx.createGain();
+      this.cicadaOsc.type = 'sawtooth';
+      this.cicadaOsc.frequency.setValueAtTime(2450, this.ctx.currentTime);
+      this.cicadaGain.gain.setValueAtTime(0.025, this.ctx.currentTime);
+      this.cicadaOsc.connect(this.cicadaGain);
+      this.cicadaGain.connect(this.ctx.destination);
+      this.cicadaOsc.start();
+    } else if (!active && this.cicadaOsc) {
+      try { this.cicadaOsc.stop(); } catch (e) {}
+      this.cicadaOsc = null;
+      this.cicadaGain = null;
+    }
+  }
+}
+const sfx = new SoundEngine();
+
+// ==========================================
+// 2. ISOMETRIC PROJECTION (Work Notes Spec)
+// ==========================================
+const ISO = {
+  TILE_W: 64,
+  TILE_H: 32,
+  originX: 480,
+  originY: 130,
+
+  cellToScreen(gx, gy) {
+    return {
+      x: this.originX + (gx - gy) * (this.TILE_W / 2),
+      y: this.originY + (gx + gy) * (this.TILE_H / 2)
+    };
+  },
+
+  screenToCell(sx, sy) {
+    const dx = sx - this.originX;
+    const dy = sy - this.originY;
+    const gx = (dx / (this.TILE_W / 2) + dy / (this.TILE_H / 2)) / 2;
+    const gy = (dy / (this.TILE_H / 2) - dx / (this.TILE_W / 2)) / 2;
+    return { x: Math.round(gx), y: Math.round(gy) };
+  },
+
+  // Формула из Work Notes: depth = screenY + screenX * 0.001
+  getDepth(gx, gy) {
+    const pos = this.cellToScreen(gx, gy);
+    return pos.y + pos.x * 0.001;
+  }
+};
+
+// ==========================================
+// 3. CANONICAL GDD FLAGS & SAVE STATE (Versioned)
+// ==========================================
+const SAVE_KEY = 'nowhere_remake_save_v1';
+
+const DEFAULT_FLAGS = {
+  LUCAS_INTRO: false,
+  CATHERINE_MET: false,
+  BOX_01_DONE: false,
+  LUCAS_SLEEP: false,
+  JOHN_INTRO: false,
+  JOHN_DIARY_10: false,
+  SHADOW_TUTORIAL: false,
+  EARTHQUAKE_01: false,
+  SOPHIA_MET: false,
+  TOLLBOOTH_KEY: false,
+  SOPHIA_GONE: false,
+  MICHAEL_MET: false,
+  BOX_02_DONE: false,
+  BOARDING_HOUSE: false,
+  CATHERINE_WARNING: false,
+  PHOTO_FOUND: false,
+  JOHN_AXE: false,
+  JOHN_PISTOL: false,
+  EMILY_DOOR: false,
+  EVERYTHING_STARTS: false,
+  JOHN_LUCAS: false,
+  ENDING_CATHERINE: false,
+  ENDING_EMILY: false,
+  NGPLUS_UNLOCKED: false
+};
+
+const state = {
+  version: 1,
+  sceneId: 'scene00',
+  character: 'LUCAS',
+  hp: 100,
+  flashlight: false,
+  equipped: null,
+  inventory: [],
+  flags: { ...DEFAULT_FLAGS },
+  player: { x: 4, y: 4, dirX: 0, dirY: 1 },
+  shakeTime: 0,
+  runTimer: 80.0,
+  soundWaves: [] // {x, y, r, maxR, alpha}
+};
+
+function saveGame() {
+  try {
+    const payload = {
+      version: 1,
+      sceneId: state.sceneId,
+      character: state.character,
+      hp: state.hp,
+      inventory: state.inventory,
+      equipped: state.equipped,
+      flags: state.flags
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
+  } catch (e) {}
+}
+
+function loadGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!data || data.version !== 1) {
+      console.warn('[Save] Несовместимая версия сейва, сброс.');
+      return false;
+    }
+    state.sceneId = data.sceneId || 'scene01';
+    state.character = data.character || 'LUCAS';
+    state.hp = data.hp ?? 100;
+    state.inventory = Array.isArray(data.inventory) ? data.inventory : [];
+    state.equipped = data.equipped || null;
+    state.flags = { ...DEFAULT_FLAGS, ...(data.flags || {}) };
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function addItem(name) {
+  if (!state.inventory.includes(name)) {
+    state.inventory.push(name);
+    if (!state.equipped && (name === 'Axe' || name === '9mm Pistol' || name === 'Shotgun')) {
+      state.equipped = name;
+    }
+    updateSidebarUI();
+    saveGame();
+  }
+}
+
+function setFlag(key, val = true) {
+  state.flags[key] = val;
+  updateSidebarUI();
+  saveGame();
+}
+
+// ==========================================
+// 4. SCENE DEFINITIONS (GDD v0.2 Exact Layouts)
+// ==========================================
+// Tile types:
+// 0 = void, 1 = wood floor, 2 = wall, 3 = shadow tile (stealth), 4 = road/asphalt,
+// 5 = forest grass, 6 = glowing goal pad, 7 = metal floor (CLANG!), 8 = sunlit scorched ground
+
+let currentScene = null;
+
+function buildScene(id) {
+  sfx.setCicada(false);
+  state.soundWaves = [];
+
+  // --- SCENE 00: PROLOGUE (1993 NEWSPAPER) ---
+  if (id === 'scene00') {
+    showPrologueNewspaper();
+    return {
+      id: 'scene00',
+      title: 'SCENE 00 — NEWSPAPER (1993)',
+      character: 'PROLOGUE',
+      darkness: 0.9,
+      objective: 'Осмотреть газету от 5 июля 1993 года',
+      w: 7, h: 7,
+      tiles: Array(49).fill(1),
+      objects: [],
+      enemies: []
+    };
+  }
+
+  // --- SCENE 01 / 03 / 04: LUCAS' ROOM & BOX PUZZLE 01 ---
+  if (id === 'scene01') {
+    setFlag('LUCAS_INTRO', true);
+    const w = 8, h = 8;
+    const tiles = [];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (x === 0 || y === 0 || x === w - 1 || y === h - 1) tiles.push(2);
+        else tiles.push(1);
+      }
+    }
+    state.player.x = 4;
+    state.player.y = 6;
+
+    // В Scene 03 перед кроватью (x=2, y=1) стоят 3 коробки.
+    // Каноническое решение: среднюю вверх, левую влево — проход к кровати открыт.
+    const boxes = state.flags.BOX_01_DONE
+      ? [
+          { id: 'box_m', type: 'box', x: 3, y: 1, label: 'Ящик' },
+          { id: 'box_l', type: 'box', x: 1, y: 2, label: 'Ящик' },
+          { id: 'box_r', type: 'box', x: 4, y: 2, label: 'Ящик' }
+        ]
+      : [
+          { id: 'box_m', type: 'box', x: 3, y: 2, label: 'Ящик (ср.)' },
+          { id: 'box_l', type: 'box', x: 2, y: 2, label: 'Ящик (лев.)' },
+          { id: 'box_r', type: 'box', x: 4, y: 3, label: 'Ящик (прав.)' }
+        ];
+
+    return {
+      id: 'scene01',
+      title: "SCENE 01/03 — LUCAS' ROOM",
+      character: 'LUCAS',
+      darkness: 0.12,
+      objective: !state.flags.CATHERINE_MET
+        ? 'Выйти в коридор (нижняя дверь) и поговорить с Catherine'
+        : 'Освободить проход из 3 коробок к кровати и лечь спать (SLEEP)',
+      w, h, tiles,
+      objects: [
+        { id: 'bed', type: 'bed', x: 2, y: 1, solid: true, label: 'Кровать Лукаса' },
+        { id: 'window', type: 'prop', x: 5, y: 1, solid: true, label: 'Окно (обычный город)' },
+        { id: 'desk', type: 'prop', x: 6, y: 2, solid: true, label: 'Стол с личными вещами' },
+        { id: 'door_hall', type: 'door', x: 4, y: 7, solid: false, label: 'Выход в коридор' },
+        ...boxes
+      ],
+      enemies: []
+    };
+  }
+
+  // --- SCENE 02: HALLWAY & CATHERINE ---
+  if (id === 'scene02') {
+    const w = 9, h = 6;
+    const tiles = [];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (x === 0 || y === 0 || x === w - 1 || y === h - 1) tiles.push(2);
+        else tiles.push(1);
+      }
+    }
+    state.player.x = 2;
+    state.player.y = 2;
+    return {
+      id: 'scene02',
+      title: 'SCENE 02 — CATHERINE',
+      character: 'LUCAS',
+      darkness: 0.18,
+      objective: state.flags.CATHERINE_MET
+        ? 'Вернуться в комнату Лукаса (левая дверь)'
+        : 'Поговорить с Catherine (клавиша E рядом)',
+      w, h, tiles,
+      objects: [
+        { id: 'door_lucas', type: 'door', x: 1, y: 2, solid: false, label: 'Комната Лукаса' },
+        { id: 'npc_catherine', type: 'npc', x: 5, y: 3, solid: true, label: 'Catherine', color: '#d48ca6' }
+      ],
+      enemies: []
+    };
+  }
+
+  // --- SCENE 05–09: JOHN'S HOUSE, SHADOW ROAD & EARTHQUAKE ---
+  if (id === 'scene05') {
+    setFlag('JOHN_INTRO', true);
+    const w = 11, h = 11;
+    const tiles = [];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (x === 0 || y === 0 || x === w - 1 || y === h - 1) {
+          tiles.push(2);
+        } else if (x <= 3 && y >= 7) {
+          tiles.push(1); // Дом Джона в лесу
+        } else if (x >= 5 && x <= 7) {
+          tiles.push(4); // Дорога (лес -> дорога -> машины -> пустота)
+        } else if (x === 4 || x === 8 || x === 9) {
+          tiles.push(3); // Тёмные теневые зоны (SHADOW STEALTH)
+        } else {
+          tiles.push(5); // Лес
+        }
+      }
+    }
+    state.player.x = 2;
+    state.player.y = 9;
+
+    const objs = [
+      { id: 'john_diary', type: 'item', x: 1, y: 8, solid: true, label: 'Дневник Джона (10–11 октября)' },
+      { id: 'tree1', type: 'tree', x: 4, y: 6, solid: true, label: 'Ель' },
+      { id: 'tree2', type: 'tree', x: 8, y: 7, solid: true, label: 'Ель' },
+      { id: 'tree3', type: 'tree', x: 8, y: 4, solid: true, label: 'Ель' },
+      { id: 'car_locked', type: 'prop', x: 7, y: 5, solid: true, label: 'Машина (CarDoor: Locked)' },
+      { id: 'healing_plant', type: 'prop', x: 9, y: 3, solid: true, label: 'Лесное растение' },
+      { id: 'to_cafe', type: 'door', x: 6, y: 1, solid: false, label: 'Вперёд по дороге → Eye Jack Café' }
+    ];
+    if (!state.flags.JOHN_AXE) {
+      objs.push({ id: 'pickup_axe', type: 'item', x: 4, y: 8, solid: true, label: 'AXE (Топор)' });
+    }
+
+    return {
+      id: 'scene05',
+      title: 'SCENES 05–09 — FOREST ROAD & SHADOW STEALTH',
+      character: 'JOHN',
+      darkness: 0.62,
+      objective: 'Прочитать дневник, пройти мимо существа по ТЕНЯМ (выключив фонарь F) к Eye Jack Café на севере',
+      w, h, tiles,
+      objects: objs,
+      enemies: [
+        {
+          id: 'forest_stalker',
+          name: 'Лесное существо',
+          x: 6, y: 6,
+          patrol: [{x:6, y:6}, {x:6, y:3}, {x:5, y:3}, {x:5, y:6}],
+          patrolIdx: 0,
+          hp: 40,
+          state: 'PATROL'
+        }
+      ]
+    };
+  }
+
+  // --- SCENE 10–12: EYE JACK CAFÉ & TOILET ---
+  if (id === 'scene10') {
+    const w = 10, h = 8;
+    const tiles = [];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (x === 0 || y === 0 || x === w - 1 || y === h - 1) tiles.push(2);
+        else if (x === 6 && y !== 3) tiles.push(2); // Перегородка туалета
+        else tiles.push(1);
+      }
+    }
+    state.player.x = 3;
+    state.player.y = 6;
+
+    const objs = [
+      { id: 'counter', type: 'prop', x: 2, y: 2, solid: true, label: 'Стойка Eye Jack Café' },
+      { id: 'exit_cafe', type: 'door', x: 3, y: 7, solid: false, label: 'Выход → Act III (Lucas)' }
+    ];
+    // Если София ещё не исчезла (SOPHIA_GONE == false), она стоит в зале
+    if (!state.flags.SOPHIA_GONE) {
+      objs.push({ id: 'npc_sophia', type: 'npc', x: 3, y: 3, solid: true, label: 'Sophia', color: '#8ecae6' });
+    }
+    if (!state.flags.TOLLBOOTH_KEY) {
+      objs.push({ id: 'key_tollbooth', type: 'item', x: 8, y: 2, solid: true, label: 'TOLLBOOTH KEY' });
+    }
+
+    return {
+      id: 'scene10',
+      title: 'SCENES 10–12 — EYE JACK CAFÉ',
+      character: 'JOHN',
+      darkness: 0.25,
+      objective: !state.flags.SOPHIA_MET
+        ? 'Поговорить с Sophia в кафе'
+        : (!state.flags.TOLLBOOTH_KEY
+          ? 'Зайти в туалет справа и найти TOLLBOOTH KEY'
+          : 'Вернуться в зал кафе и выйти через южную дверь'),
+      w, h, tiles,
+      objects: objs,
+      enemies: []
+    };
+  }
+
+  // --- SCENE 13–15: MICHAEL'S WAREHOUSE (CRATE PUZZLE 01 & METAL FLOOR) ---
+  if (id === 'scene13') {
+    const w = 10, h = 9;
+    const tiles = [];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (x === 0 || y === 0 || x === w - 1 || y === h - 1) tiles.push(2);
+        else if (y === 2 && x >= 2 && x <= 7) tiles.push(7); // Металлический пол (CLANG!)
+        else tiles.push(1);
+      }
+    }
+    // 3 светящихся места (LIGHT 1, 2, 3)
+    const goals = [{x: 3, y: 4}, {x: 5, y: 4}, {x: 4, y: 6}];
+    for (const g of goals) tiles[g.y * w + g.x] = 6;
+
+    state.player.x = 2;
+    state.player.y = 7;
+
+    return {
+      id: 'scene13',
+      title: "SCENES 13–15 — WORK & MICHAEL'S OFFICE",
+      character: 'LUCAS',
+      darkness: 0.35,
+      objective: 'Поставить 3 ящика на 3 светящиеся отметки, пройти по металлическому полу к пансиону',
+      w, h, tiles,
+      goals,
+      objects: [
+        { id: 'npc_michael', type: 'npc', x: 2, y: 1, solid: true, label: 'Michael', color: '#c9a66b' },
+        { id: 'wbox1', type: 'box', x: 3, y: 5, label: 'BOX 1' },
+        { id: 'wbox2', type: 'box', x: 6, y: 4, label: 'BOX 2' },
+        { id: 'wbox3', type: 'box', x: 4, y: 5, label: 'BOX 3' },
+        { id: 'to_boarding', type: 'door', x: 8, y: 1, solid: false, label: 'В Пансион (Boarding House)' }
+      ],
+      enemies: []
+    };
+  }
+
+  // --- SCENE 17–21, 36, 41–42: BOARDING HOUSE (ROOMS 101, 201, 202, 203 & THE MERGE) ---
+  if (id === 'scene17') {
+    setFlag('BOARDING_HOUSE', true);
+    const w = 11, h = 9;
+    const tiles = [];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (x === 0 || y === 0 || x === w - 1 || y === h - 1) tiles.push(2);
+        else tiles.push(1);
+      }
+    }
+    state.player.x = 5;
+    state.player.y = 7;
+
+    return {
+      id: 'scene17',
+      title: 'SCENES 17–21 / 41 — BOARDING HOUSE',
+      character: state.flags.JOHN_LUCAS ? 'JOHN LUCAS' : 'LUCAS',
+      darkness: 0.42,
+      objective: !state.flags.PHOTO_FOUND
+        ? 'Посетить 201 (Catherine) и найти PHOTOGRAPH в комнате 202 (Lucas)'
+        : 'Войти в открывшуюся комнату 203 (Emily) на севере',
+      w, h, tiles,
+      objects: [
+        { id: 'door_203', type: 'door', x: 5, y: 1, solid: true, label: '[203 — Emily]' },
+        { id: 'door_201', type: 'npc', x: 2, y: 3, solid: true, label: '[201 — Catherine]', color: '#d48ca6' },
+        { id: 'photo_202', type: 'item', x: 8, y: 3, solid: true, label: '[202 — Lucas: PHOTOGRAPH]' },
+        { id: 'door_101', type: 'npc', x: 3, y: 6, solid: true, label: '[101 — Peter Milford]', color: '#7fa99b' },
+        { id: 'door_102', type: 'prop', x: 7, y: 6, solid: true, label: '[102 — Empty]' }
+      ],
+      enemies: []
+    };
+  }
+
+  // --- SCENE 88–92: RUN FOR LIFE (80 SECONDS TO ROOM 203) ---
+  if (id === 'scene88') {
+    state.runTimer = 80.0;
+    sfx.setCicada(true);
+    const w = 12, h = 12;
+    const tiles = [];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (x === 0 || y === 0 || x === w - 1 || y === h - 1) tiles.push(2);
+        else if ((x + y) % 3 === 0) tiles.push(3); // Участки спасительной тени леса
+        else tiles.push(8); // Выжженная солнцем поверхность под гул цикады
+      }
+    }
+    state.player.x = 2;
+    state.player.y = 10;
+
+    return {
+      id: 'scene88',
+      title: 'SCENES 88–92 — RUN FOR LIFE (80s)',
+      character: 'JOHN LUCAS (MUTATING)',
+      darkness: 0.28,
+      objective: 'ДОБРАТЬСЯ ДО ROOM 203 (северо-восток) за 80 секунд! Не останавливайтесь!',
+      w, h, tiles,
+      objects: [
+        { id: 'dead_tree1', type: 'tree', x: 4, y: 8, solid: true, label: 'Дерево без ветвей' },
+        { id: 'dead_tree2', type: 'tree', x: 6, y: 6, solid: true, label: 'Дерево без ветвей' },
+        { id: 'dead_tree3', type: 'tree', x: 5, y: 4, solid: true, label: 'Дерево без ветвей' },
+        { id: 'dead_tree4', type: 'tree', x: 8, y: 7, solid: true, label: 'Дерево без ветвей' },
+        { id: 'goal_203', type: 'door', x: 9, y: 1, solid: false, label: 'ДВЕРЬ 203 — EMILY' }
+      ],
+      enemies: [
+        {
+          id: 'red_runner_1',
+          name: 'Red Runner',
+          x: 5, y: 7,
+          patrol: [{x:3, y:7}, {x:8, y:7}],
+          patrolIdx: 0,
+          hp: 50,
+          state: 'PATROL'
+        },
+        {
+          id: 'red_runner_2',
+          name: 'Red Runner',
+          x: 7, y: 3,
+          patrol: [{x:4, y:3}, {x:9, y:3}],
+          patrolIdx: 0,
+          hp: 50,
+          state: 'PATROL'
+        }
+      ]
+    };
+  }
+
+  // --- SCENE 94 / 121–126: ROOM 203 — EMILY & THE FINAL CHOICE ---
+  if (id === 'scene94') {
+    sfx.setCicada(false);
+    const w = 10, h = 9;
+    const tiles = [];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (x === 0 || y === 0 || x === w - 1 || y === h - 1) tiles.push(2);
+        else tiles.push(1);
+      }
+    }
+    state.player.x = 5;
+    state.player.y = 7;
+
+    return {
+      id: 'scene94',
+      title: 'SCENES 94–126 — ROOM 203 & FINAL CHOICE',
+      character: 'JOHN LUCAS',
+      darkness: 0.48,
+      objective: 'Поговорить с Emily в центре комнаты 203, затем сделать финальный выбор у одной из двух дверей',
+      w, h, tiles,
+      objects: [
+        { id: 'npc_emily', type: 'npc', x: 5, y: 4, solid: true, label: 'Emily Stanford', color: '#e07a7a' },
+        { id: 'bed_203_l', type: 'bed', x: 2, y: 4, solid: true, label: 'Кровать' },
+        { id: 'bed_203_r', type: 'bed', x: 8, y: 4, solid: true, label: 'Кровать' },
+        { id: 'choice_catherine', type: 'door', x: 3, y: 1, solid: true, label: 'ДВЕРЬ: CATHERINE (Настоящее)' },
+        { id: 'choice_emily', type: 'door', x: 7, y: 1, solid: true, label: 'ДВЕРЬ: EMILY (Прошлое)' }
+      ],
+      enemies: []
+    };
+  }
+}
+
+// ==========================================
+// 5. DIALOGUE & CINEMA OVERLAYS
+// ==========================================
+let activeDialogue = null;
+let dialogueIdx = 0;
+
+function startDialogue(speaker, lines, onComplete = null) {
+  activeDialogue = { speaker, lines, onComplete };
+  dialogueIdx = 0;
+  const box = document.getElementById('dialogue-box');
+  box.style.display = 'block';
+  renderDialogueLine();
+}
+
+function renderDialogueLine() {
+  if (!activeDialogue) return;
+  document.getElementById('dlg-speaker').textContent = activeDialogue.speaker;
+  document.getElementById('dlg-text').textContent = activeDialogue.lines[dialogueIdx];
+}
+
+function advanceDialogue() {
+  if (!activeDialogue) return;
+  sfx.playStep('wood');
+  dialogueIdx++;
+  if (dialogueIdx >= activeDialogue.lines.length) {
+    const cb = activeDialogue.onComplete;
+    activeDialogue = null;
+    document.getElementById('dialogue-box').style.display = 'none';
+    if (cb) cb();
+  } else {
+    renderDialogueLine();
+  }
+}
+
+function showPrologueNewspaper() {
+  const ov = document.getElementById('cinema-overlay');
+  ov.style.display = 'flex';
+  ov.innerHTML = `
+    <div style="color:#7f8c84; font-size:12px; letter-spacing:2px; margin-bottom:14px;">
+      [ НИЗКИЙ ГУЛ... ОТДАЛЁННЫЙ ТРЕСК... ТИХИЙ ШУМ РАДИО ]
+    </div>
+    <div class="paper-card">
+      <h2>THE DAILY CHRONICLE — <span class="paper-highlight">5 JULY 1993</span></h2>
+      <p style="font-size:14px; line-height:1.6;">
+        ...После разрушительного <span class="paper-highlight">EARTHQUAKE</span> спасатели продолжают разбор завалов жилого квартала.<br><br>
+        Среди погибших под обломками собственной квартиры обнаружены <span class="paper-highlight">JOHN</span> (30 лет) и <span class="paper-highlight">SOPHIA</span> (28 лет).<br><br>
+        Их тела обнаружила соседка — <span class="paper-highlight">EMILY STANFORD</span>...
+      </p>
+    </div>
+    <div style="margin-top:20px;">
+      <button onclick="closeOverlayAndGo('scene01')" style="padding:8px 18px; font-size:13px;">
+        НАЧАТЬ ACT I — LUCAS ▶
+      </button>
+    </div>
+  `;
+}
+
+function showPhotographEvent() {
+  const ov = document.getElementById('cinema-overlay');
+  ov.style.display = 'flex';
+  ov.innerHTML = `
+    <div class="photo-card">
+      <div style="font-size:11px; color:#9a9286; letter-spacing:2px; margin-bottom:10px;">SCENE 20 — CAMERA EVENT (УПРАВЛЕНИЕ ЗАБЛОКИРОВАНО)</div>
+      <div style="height:130px; background:#0d0c0b; border:1px solid #443e37; display:flex; align-items:center; justify-content:center; margin-bottom:14px; color:#b8afa2;">
+        [ Силуэты мужчины и женщины, пугающе похожих на Lucas и Catherine ]
+      </div>
+      <p style="font-style:italic; font-size:14px; line-height:1.5; color:#f2e9d8;">
+        “To <b>John</b> and <b>Sophia</b>, to remember the lovely times we spent together.”<br>
+        — <b>Emily</b>
+      </p>
+    </div>
+    <div style="margin-top:18px;">
+      <button onclick="finishPhotoHold()" style="padding:8px 18px; font-size:13px;">...</button>
+    </div>
+  `;
+}
+
+window.finishPhotoHold = function() {
+  document.getElementById('cinema-overlay').style.display = 'none';
+  setFlag('PHOTO_FOUND', true);
+  addItem('Photograph');
+  startDialogue('LUCAS', ['...']);
+  currentScene.objective = 'Войти в открывшуюся комнату 203 (Emily) на севере';
+  updateSidebarUI();
+};
+
+function showMergeEvent() {
+  const ov = document.getElementById('cinema-overlay');
+  ov.style.display = 'flex';
+  ov.innerHTML = `
+    <div style="color:#a8383b; letter-spacing:4px; font-size:14px;">EVERYTHING STARTS HERE</div>
+    <div style="color:#7f8c84; letter-spacing:4px; font-size:13px; margin-bottom:22px;">THE END STARTS HERE</div>
+    <div class="merge-title">JOHN LUCAS</div>
+    <p style="max-width:440px; color:#8f9c94; font-size:12px; line-height:1.6;">
+      SCENE 42 — THE MERGE.<br>
+      Двух отдельных линий больше нет. Единый персонаж, единый инвентарь, единая шкала здоровья.
+    </p>
+    <div style="margin-top:20px;">
+      <button onclick="closeOverlayAndGo('scene88')" style="padding:8px 18px; font-size:13px;">
+        ПЕРЕЙТИ К ACT VIII — RUN FOR LIFE (80s) ▶
+      </button>
+    </div>
+  `;
+}
+
+function showEndingScreen(type) {
+  const ov = document.getElementById('cinema-overlay');
+  ov.style.display = 'flex';
+  const isCath = type === 'CATHERINE';
+  if (isCath) setFlag('ENDING_CATHERINE', true);
+  else setFlag('ENDING_EMILY', true);
+  setFlag('NGPLUS_UNLOCKED', true);
+
+  ov.innerHTML = `
+    <div style="letter-spacing:8px; font-size:36px; margin-bottom:8px;">NOWHERE</div>
+    <div style="color:${isCath ? '#8ecae6' : '#e07a7a'}; letter-spacing:3px; font-size:14px; margin-bottom:20px;">
+      SCENE 125 — ENDING: ${type}
+    </div>
+    <p style="max-width:480px; color:#c5d0c9; font-size:13px; line-height:1.65;">
+      ${isCath
+        ? 'Лукас выбирает настоящее. Эмили остаётся позади, искажённое пространство постепенно исчезает, а Кэтрин становится последним человеческим образом.'
+        : 'Лукас выбирает Эмили. Настоящее исчезает. Лукас и Эмили остаются вместе внутри тихого искажённого пространства памяти.'}
+    </p>
+    <div style="margin-top:14px; padding:8px 14px; border:1px solid #5c9e78; color:#8ce0b0; font-size:11px;">
+      NEW GAME+ UNLOCKED (${isCath ? 'Режим: Бесконечный боезапас' : 'Режим: Усиленные существа'})
+    </div>
+    <div style="margin-top:22px;">
+      <button onclick="closeOverlayAndGo('scene01')" style="padding:8px 18px;">ВЕРНУТЬСЯ В НАЧАЛО (NG+)</button>
+    </div>
+  `;
+}
+
+window.closeOverlayAndGo = function(targetScene) {
+  document.getElementById('cinema-overlay').style.display = 'none';
+  loadScene(targetScene);
+};
+
+// ==========================================
+// 6. INTERACTION & PUZZLE LOGIC
+// ==========================================
+function loadScene(id) {
+  state.sceneId = id;
+  currentScene = buildScene(id);
+  state.character = currentScene.character;
+  document.getElementById('scene-select').value = id;
+  document.getElementById('timer-hud').style.display = (id === 'scene88') ? 'block' : 'none';
+  updateSidebarUI();
+  saveGame();
+}
+
+function getObjectAt(gx, gy) {
+  if (!currentScene) return null;
+  return currentScene.objects.find(o => o.x === gx && o.y === gy) || null;
+}
+
+function isCellBlocked(gx, gy) {
+  if (!currentScene) return true;
+  if (gx < 0 || gy < 0 || gx >= currentScene.w || gy >= currentScene.h) return true;
+  const tile = currentScene.tiles[gy * currentScene.w + gx];
+  if (tile === 0 || tile === 2) return true;
+  const obj = getObjectAt(gx, gy);
+  if (obj && (obj.solid || obj.type === 'box')) return true;
+  return false;
+}
+
+function checkCrateGoals() {
+  if (!currentScene || !currentScene.goals) return;
+  const boxes = currentScene.objects.filter(o => o.type === 'box');
+  let matched = 0;
+  for (const g of currentScene.goals) {
+    if (boxes.some(b => b.x === g.x && b.y === g.y)) matched++;
+  }
+  if (matched === currentScene.goals.length && !state.flags.BOX_02_DONE) {
+    setFlag('BOX_02_DONE', true);
+    sfx.playFlashlight();
+    startDialogue('MICHAEL', [
+      'Отлично. Все три коробки на своих местах.',
+      'Поднимись ко мне в офис по металлическому настилу, когда будешь готов.'
+    ]);
+  }
+}
+
+function tryMovePlayer(dx, dy) {
+  if (activeDialogue || document.getElementById('cinema-overlay').style.display === 'flex') return;
+  if (!currentScene) return;
+
+  state.player.dirX = dx;
+  state.player.dirY = dy;
+
+  const nx = state.player.x + dx;
+  const ny = state.player.y + dy;
+
+  if (nx < 0 || ny < 0 || nx >= currentScene.w || ny >= currentScene.h) return;
+  const targetTile = currentScene.tiles[ny * currentScene.w + nx];
+  if (targetTile === 2 || targetTile === 0) return;
+
+  const obj = getObjectAt(nx, ny);
+
+  // Толкание коробки по сетке (Scene 03 / Scene 14)
+  if (obj && obj.type === 'box') {
+    const bx = nx + dx;
+    const by = ny + dy;
+    if (!isCellBlocked(bx, by)) {
+      obj.x = bx;
+      obj.y = by;
+      state.player.x = nx;
+      state.player.y = ny;
+      sfx.playPush();
+      if (state.sceneId === 'scene01' && obj.x <= 2 && obj.y <= 2) {
+        setFlag('BOX_01_DONE', true);
+      }
+      checkCrateGoals();
+    }
+    return;
+  }
+
+  // Наступание на открытую дверь-переход
+  if (obj && obj.type === 'door' && !obj.solid) {
+    state.player.x = nx;
+    state.player.y = ny;
+    handleObjectInteraction(obj);
+    return;
+  }
+
+  if (obj && obj.solid) {
+    // Автоматически взаимодействуем при упоре в интерактивный объект
+    handleObjectInteraction(obj);
+    return;
+  }
+
+  // Обычный шаг
+  state.player.x = nx;
+  state.player.y = ny;
+
+  if (targetTile === 7) {
+    // Металлический пол: CLANG!
+    sfx.playStep('metal');
+    emitSoundWave(nx, ny, 5.5);
+  } else if (targetTile === 5 || targetTile === 3) {
+    sfx.playStep('forest');
+    if (targetTile === 3 && !state.flags.SHADOW_TUTORIAL) {
+      setFlag('SHADOW_TUTORIAL', true);
+    }
+  } else {
+    sfx.playStep('wood');
+  }
+
+  // Скриптовое землетрясение в Scene 08 при выходе на дорогу
+  if (state.sceneId === 'scene05' && targetTile === 4 && !state.flags.EARTHQUAKE_01) {
+    setFlag('EARTHQUAKE_01', true);
+    state.shakeTime = 2.4;
+    sfx.playEarthquake();
+    startDialogue('SYSTEM (SCENE 08 — EARTHQUAKE)', [
+      '[ Земля резко уходит из-под ног. Дорога деформируется, брошенные машины вздрагивают. ]',
+      '[ После окончания толчка наступает мёртвая тишина. ]'
+    ]);
+  }
+}
+
+function emitSoundWave(gx, gy, radiusCells) {
+  state.soundWaves.push({ x: gx, y: gy, r: 0.2, maxR: radiusCells, alpha: 0.9 });
+  if (!currentScene) return;
+  for (const en of currentScene.enemies) {
+    const dist = Math.hypot(en.x - gx, en.y - gy);
+    if (dist <= radiusCells) {
+      en.state = 'CHASE';
+    }
+  }
+}
+
+function interactNearby() {
+  if (activeDialogue) {
+    advanceDialogue();
+    return;
+  }
+  if (!currentScene) return;
+  // Ищем объект перед игроком или на соседней клетке
+  const frontX = state.player.x + state.player.dirX;
+  const frontY = state.player.y + state.player.dirY;
+  let obj = getObjectAt(frontX, frontY) || getObjectAt(state.player.x, state.player.y);
+  if (!obj) {
+    obj = currentScene.objects.find(o => Math.abs(o.x - state.player.x) <= 1 && Math.abs(o.y - state.player.y) <= 1);
+  }
+  if (obj) handleObjectInteraction(obj);
+}
+
+function handleObjectInteraction(obj) {
+  switch (obj.id) {
+    case 'door_hall':
+      loadScene('scene02');
+      break;
+    case 'door_lucas':
+      loadScene('scene01');
+      break;
+    case 'npc_catherine':
+      setFlag('CATHERINE_MET', true);
+      startDialogue('CATHERINE', [
+        'Лукас? Ты ещё не спишь?',
+        'Мы так недавно начали всё сначала... Мне хочется верить, что теперь всё будет хорошо.',
+        'Попробуй отдохнуть сегодня.'
+      ]);
+      currentScene.objective = 'Вернуться в комнату Лукаса (левая дверь)';
+      updateSidebarUI();
+      break;
+    case 'bed':
+      if (!state.flags.CATHERINE_MET) {
+        startDialogue('LUCAS', ['Сначала стоит выйти в коридор и поговорить с Кэтрин.']);
+      } else {
+        setFlag('BOX_01_DONE', true);
+        setFlag('LUCAS_SLEEP', true);
+        startDialogue('UI — SLEEP', [
+          '[ Экран постепенно темнеет. Музыка отсутствует — только дыхание и ветер за окном. ]',
+          'CUT TO BLACK → ACT II: JOHN'
+        ], () => loadScene('scene05'));
+      }
+      break;
+    case 'window':
+      startDialogue('LUCAS', ['За окном обычный ночной город. Никаких следов катастрофы.']);
+      break;
+    case 'desk':
+      startDialogue('LUCAS', ['Коробки с вещами. Мы с Кэтрин ещё не всё разобрали.']);
+      break;
+    case 'john_diary':
+      setFlag('JOHN_DIARY_10', true);
+      addItem('Diary (10 Oct)');
+      startDialogue('DIARY — 10 & 11 OCTOBER', [
+        'DAY 1 — 10 OCTOBER: Я нашёл мужчину без сознания в лесу и принёс его домой.',
+        'DAY 2 — 11 OCTOBER: Мужчина всё ещё без сознания. Я продолжаю наблюдать за ним.'
+      ]);
+      break;
+    case 'pickup_axe':
+      setFlag('JOHN_AXE', true);
+      addItem('Axe');
+      currentScene.objects = currentScene.objects.filter(o => o.id !== 'pickup_axe');
+      startDialogue('ITEM — AXE', ['Вы подобрали топор (AXE). Нажмите [Space] для удара.']);
+      break;
+    case 'healing_plant':
+      if (state.inventory.includes('Axe')) {
+        state.hp = Math.min(100, state.hp + 25);
+        currentScene.objects = currentScene.objects.filter(o => o.id !== 'healing_plant');
+        startDialogue('JOHN', ['Я срубил растение топором... Странно, я чувствую себя заметно сильнее.']);
+        updateSidebarUI();
+      } else {
+        startDialogue('JOHN', ['Корни преграждают путь. Нужен топор (AXE).']);
+      }
+      break;
+    case 'car_locked':
+      startDialogue('JOHN (GDD FLAG: CarDoor)', [
+        'Старая брошенная машина на обочине. Дверь сейчас заперта (STATE: Locked / Future shortcut).'
+      ]);
+      break;
+    case 'to_cafe':
+      loadScene('scene10');
+      break;
+    case 'npc_sophia':
+      setFlag('SOPHIA_MET', true);
+      startDialogue('SOPHIA — EYE JACK CAFÉ', [
+        'Привет. Ты новый в городе? Раньше я тебя здесь не видела.',
+        'Меня зовут София. Я работаю в этом кафе.',
+        'Если нужно умыться — дверь в туалет справа за перегородкой.'
+      ]);
+      currentScene.objective = 'Зайти в туалет справа и осмотреть помещение';
+      updateSidebarUI();
+      break;
+    case 'key_tollbooth':
+      setFlag('TOLLBOOTH_KEY', true);
+      setFlag('SOPHIA_GONE', true);
+      addItem('Tollbooth Key');
+      currentScene.objects = currentScene.objects.filter(o => o.id !== 'key_tollbooth' && o.id !== 'npc_sophia');
+      startDialogue('SCENE 11–12 — TOLLBOOTH KEY', [
+        'Вы подняли ключ с маркировкой «TOLLBOOTH».',
+        '[ Вы возвращаетесь в зал кафе... Софии нигде нет. Ни крика, ни следов борьбы. Просто пустота. ]'
+      ]);
+      currentScene.objective = 'Выйти из Eye Jack Café (южная дверь)';
+      updateSidebarUI();
+      break;
+    case 'exit_cafe':
+      loadScene('scene13');
+      break;
+    case 'npc_michael':
+      setFlag('MICHAEL_MET', true);
+      startDialogue('MICHAEL', [
+        'Я управляю всем этим местом, Лукас.',
+        'Твоя задача — передвинуть три ящика на три светящиеся отметки на полу. И осторожнее на металлическом настиле — он громко гудит под ногами.'
+      ]);
+      break;
+    case 'to_boarding':
+      loadScene('scene17');
+      break;
+    case 'door_201':
+      setFlag('CATHERINE_WARNING', true);
+      startDialogue('CATHERINE (ROOM 201)', [
+        'Лукас... Ты ведь не бросишь меня на этот раз?',
+        '“You aren\'t going to abandon me this time?”',
+        '[ В её голосе нет угрозы, но фраза «на этот раз» повисает в тишине. ]'
+      ]);
+      break;
+    case 'door_101':
+      addItem('9mm Pistol');
+      setFlag('JOHN_PISTOL', true);
+      startDialogue('PETER MILFORD (ROOM 101)', [
+        'Я местный врач, Лукас. То, что происходит в этом городе — не эпидемия.',
+        'Эмили... она повсюду. Возьми этот 9mm Pistol. Но помни: звук выстрела привлечёт их.'
+      ]);
+      break;
+    case 'door_102':
+      startDialogue('ROOM 102', ['Комната 102 пуста. На бетонном полу видны влажные следы, а на стене — глубокие царапины.']);
+      break;
+    case 'photo_202':
+      showPhotographEvent();
+      break;
+    case 'door_203':
+      setFlag('EMILY_DOOR', true);
+      if (!state.flags.PHOTO_FOUND) {
+        startDialogue('ROOM 203 — EMILY', [
+          '[ Вы стучите в дверь 203. Никто не открывает, но изнутри доносится тихий женский шёпот. Сначала нужно осмотреть комнату 202. ]'
+        ]);
+      } else {
+        setFlag('EVERYTHING_STARTS', true);
+        setFlag('JOHN_LUCAS', true);
+        showMergeEvent();
+      }
+      break;
+    case 'goal_203':
+      loadScene('scene94');
+      break;
+    case 'npc_emily':
+      startDialogue('EMILY STANFORD (ROOM 203)', [
+        'Здравствуй, любимый. Мы так давно не виделись.',
+        'Ты пытался продолжить жить? Впустил в свою жизнь Кэтрин и оставил меня в той машине в день землетрясения?',
+        'Прости меня, Лукас... Возможно, ещё не слишком поздно начать всё сначала. Выбирай.'
+      ]);
+      break;
+    case 'choice_catherine':
+      showEndingScreen('CATHERINE');
+      break;
+    case 'choice_emily':
+      showEndingScreen('EMILY');
+      break;
+  }
+}
+
+// ==========================================
+// 7. COMBAT, STEALTH & AI LOOP
+// ==========================================
+function performAttack() {
+  if (activeDialogue || !currentScene) return;
+  const hasGun = state.inventory.includes('9mm Pistol') || state.inventory.includes('Shotgun');
+  const hasAxe = state.inventory.includes('Axe');
+  if (!hasGun && !hasAxe) {
+    startDialogue('SYSTEM', ['У вас пока нет оружия (найдите AXE в лесу или 9mm Pistol в пансионе).']);
+    return;
+  }
+  const useGun = state.equipped === '9mm Pistol' || state.equipped === 'Shotgun' || (!hasAxe && hasGun);
+  sfx.playAttack(useGun);
+
+  // Выстрел создаёт сильную звуковую волну и привлекает монстров!
+  if (useGun) {
+    emitSoundWave(state.player.x, state.player.y, 7.0);
+  } else {
+    emitSoundWave(state.player.x, state.player.y, 2.2);
+  }
+
+  const range = useGun ? 4.5 : 1.6;
+  for (const en of currentScene.enemies) {
+    if (en.hp <= 0) continue;
+    const dist = Math.hypot(en.x - state.player.x, en.y - state.player.y);
+    if (dist <= range) {
+      en.hp -= useGun ? 25 : 20;
+      en.state = 'CHASE';
+    }
+  }
+  currentScene.enemies = currentScene.enemies.filter(e => e.hp > 0);
+}
+
+let aiTickTimer = 0;
+function updateAI(dt) {
+  if (!currentScene || activeDialogue) return;
+
+  // Таймер 80 секунд для Run For Life (Scene 88)
+  if (state.sceneId === 'scene88') {
+    state.runTimer = Math.max(0, state.runTimer - dt);
+    document.getElementById('timer-val').textContent = state.runTimer.toFixed(1);
+    if (state.runTimer <= 0) {
+      state.runTimer = 80.0;
+      loadScene('scene88');
+      startDialogue('TRANSFORMATION COMPLETE', ['Время вышло. Трансформация поглотила рассудок прежде, чем вы добрались до комнаты 203. Попробуйте снова.']);
+      return;
+    }
+  }
+
+  aiTickTimer += dt;
+  if (aiTickTimer < 0.55) return;
+  aiTickTimer = 0;
+
+  const pTile = currentScene.tiles[state.player.y * currentScene.w + state.player.x];
+  const inShadow = (pTile === 3) && !state.flashlight;
+  // Ключевая механика GDD Раздел 4: в тени с выключенным фонарём монстры почти не видят игрока
+  const detectRadius = state.flashlight ? 5.5 : (inShadow ? 1.15 : 3.2);
+
+  for (const en of currentScene.enemies) {
+    const dist = Math.hypot(en.x - state.player.x, en.y - state.player.y);
+    if (dist <= detectRadius) {
+      en.state = 'CHASE';
+    } else if (inShadow && dist > 2.2) {
+      en.state = 'PATROL';
+    }
+
+    if (en.state === 'CHASE') {
+      const dx = Math.sign(state.player.x - en.x);
+      const dy = Math.sign(state.player.y - en.y);
+      if (Math.abs(state.player.x - en.x) + Math.abs(state.player.y - en.y) <= 1) {
+        state.hp = Math.max(10, state.hp - 12);
+        state.shakeTime = 0.35;
+        sfx.playAttack(false);
+        updateSidebarUI();
+      } else {
+        if (dx !== 0 && !isCellBlocked(en.x + dx, en.y)) en.x += dx;
+        else if (dy !== 0 && !isCellBlocked(en.x, en.y + dy)) en.y += dy;
+      }
+    } else if (en.patrol && en.patrol.length > 0) {
+      const target = en.patrol[en.patrolIdx];
+      if (en.x === target.x && en.y === target.y) {
+        en.patrolIdx = (en.patrolIdx + 1) % en.patrol.length;
+      } else {
+        const dx = Math.sign(target.x - en.x);
+        const dy = Math.sign(target.y - en.y);
+        if (dx !== 0) en.x += dx;
+        else if (dy !== 0) en.y += dy;
+      }
+    }
+  }
+}
+
+// ==========================================
+// 8. RENDERING (Isometric Diamond + Depth Sorting + Lighting)
+// ==========================================
+const canvas = document.getElementById('game-canvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  canvas.width = canvas.clientWidth;
+  canvas.height = canvas.clientHeight;
+  ISO.originX = Math.floor(canvas.width / 2);
+  ISO.originY = Math.floor(canvas.height * 0.18);
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+function drawIsoTile(gx, gy, fillStyle, strokeStyle = 'rgba(255,255,255,0.06)') {
+  const { x, y } = ISO.cellToScreen(gx, gy);
+  const hw = ISO.TILE_W / 2;
+  const hh = ISO.TILE_H / 2;
+  ctx.beginPath();
+  ctx.moveTo(x, y - hh);
+  ctx.lineTo(x + hw, y);
+  ctx.lineTo(x, y + hh);
+  ctx.lineTo(x - hw, y);
+  ctx.closePath();
+  ctx.fillStyle = fillStyle;
+  ctx.fill();
+  if (strokeStyle) {
+    ctx.strokeStyle = strokeStyle;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+}
+
+function drawIsoBlock(gx, gy, heightPx, topColor, leftColor, rightColor, label = null) {
+  const { x, y } = ISO.cellToScreen(gx, gy);
+  const hw = ISO.TILE_W / 2;
+  const hh = ISO.TILE_H / 2;
+
+  // Верхняя грань
+  ctx.beginPath();
+  ctx.moveTo(x, y - hh - heightPx);
+  ctx.lineTo(x + hw, y - heightPx);
+  ctx.lineTo(x, y + hh - heightPx);
+  ctx.lineTo(x - hw, y - heightPx);
+  ctx.closePath();
+  ctx.fillStyle = topColor;
+  ctx.fill();
+
+  // Левая грань
+  ctx.beginPath();
+  ctx.moveTo(x - hw, y - heightPx);
+  ctx.lineTo(x, y + hh - heightPx);
+  ctx.lineTo(x, y + hh);
+  ctx.lineTo(x - hw, y);
+  ctx.closePath();
+  ctx.fillStyle = leftColor;
+  ctx.fill();
+
+  // Правая грань
+  ctx.beginPath();
+  ctx.moveTo(x + hw, y - heightPx);
+  ctx.lineTo(x, y + hh - heightPx);
+  ctx.lineTo(x, y + hh);
+  ctx.lineTo(x + hw, y);
+  ctx.closePath();
+  ctx.fillStyle = rightColor;
+  ctx.fill();
+
+  if (label) {
+    ctx.fillStyle = '#e5ece8';
+    ctx.font = '11px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, x, y - heightPx - 10);
+  }
+}
+
+function drawCharacter(gx, gy, bodyColor, name, isEnemy = false) {
+  const { x, y } = ISO.cellToScreen(gx, gy);
+  // Тень под ногами (якорь 0.5, 1.0)
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + 2, 14, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Силуэт персонажа (эталон масштаба из Work Notes)
+  ctx.fillStyle = bodyColor;
+  ctx.fillRect(x - 8, y - 42, 16, 40);
+
+  // Голова
+  ctx.fillStyle = isEnemy ? '#c94a4a' : '#e2d4c4';
+  ctx.beginPath();
+  ctx.arc(x, y - 48, 8, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = isEnemy ? '#ff9494' : '#ffffff';
+  ctx.font = 'bold 11px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText(name, x, y - 62);
+}
+
+let lastTime = performance.now();
+function gameLoop(now) {
+  const dt = Math.min(0.1, (now - lastTime) / 1000);
+  lastTime = now;
+
+  updateAI(dt);
+
+  ctx.save();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Эффект тряски камеры при землетрясении или уроне
+  if (state.shakeTime > 0) {
+    state.shakeTime -= dt;
+    ctx.translate((Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12);
+  }
+
+  if (currentScene) {
+    // 1. Отрисовка тайлов пола (без щелей по ромбам)
+    for (let y = 0; y < currentScene.h; y++) {
+      for (let x = 0; x < currentScene.w; x++) {
+        const t = currentScene.tiles[y * currentScene.w + x];
+        if (t === 0) continue;
+        let color = '#24292e';
+        if (t === 1) color = '#2d2620'; // Деревянный пол
+        else if (t === 2) color = '#16191c'; // Основание стены
+        else if (t === 3) color = '#101820'; // Тень (SHADOW STEALTH)
+        else if (t === 4) color = '#26282a'; // Дорога
+        else if (t === 5) color = '#1e3026'; // Лес
+        else if (t === 6) color = '#5e4b22'; // Светящаяся цель (LIGHT GOAL)
+        else if (t === 7) color = '#39454f'; // Металлический пол (CLANG)
+        else if (t === 8) color = '#573c28'; // Выжженная жарой поверхность
+        drawIsoTile(x, y, color);
+
+        if (t === 6) {
+          const pos = ISO.cellToScreen(x, y);
+          ctx.fillStyle = 'rgba(255, 215, 100, 0.55)';
+          ctx.beginPath();
+          ctx.arc(pos.x, pos.y, 7, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    // 2. Сбор всех объектов для сортировки по формуле depth = screenY + screenX * 0.001
+    const renderables = [];
+
+    // Стены по периметру (только задние стены рисуем высокими, передние — низким бортиком для обзора)
+    for (let y = 0; y < currentScene.h; y++) {
+      for (let x = 0; x < currentScene.w; x++) {
+        if (currentScene.tiles[y * currentScene.w + x] === 2) {
+          const isBackWall = (x === 0 || y === 0);
+          renderables.push({
+            depth: ISO.getDepth(x, y),
+            draw: () => drawIsoBlock(
+              x, y,
+              isBackWall ? 42 : 10,
+              '#2a3036', '#1e2328', '#15191d'
+            )
+          });
+        }
+      }
+    }
+
+    // Интерактивные объекты, деревья, коробки и NPC
+    for (const obj of currentScene.objects) {
+      renderables.push({
+        depth: ISO.getDepth(obj.x, obj.y),
+        draw: () => {
+          if (obj.type === 'box') {
+            drawIsoBlock(obj.x, obj.y, 26, '#9c7444', '#7a5932', '#5c4223', obj.label);
+          } else if (obj.type === 'tree') {
+            drawIsoBlock(obj.x, obj.y, 58, '#284736', '#1c3327', '#13241b', obj.label);
+          } else if (obj.type === 'bed') {
+            drawIsoBlock(obj.x, obj.y, 18, '#6e474b', '#523336', '#3d2528', obj.label);
+          } else if (obj.type === 'door') {
+            drawIsoBlock(obj.x, obj.y, 36, '#4f6d7a', '#395059', '#293940', obj.label);
+          } else if (obj.type === 'item') {
+            drawIsoBlock(obj.x, obj.y, 14, '#d4a359', '#a67c3d', '#7d5c2b', obj.label);
+          } else if (obj.type === 'npc') {
+            drawCharacter(obj.x, obj.y, obj.color || '#8ecae6', obj.label, false);
+          } else {
+            drawIsoBlock(obj.x, obj.y, 24, '#4c545c', '#393f45', '#292e33', obj.label);
+          }
+        }
+      });
+    }
+
+    // Враги
+    for (const en of currentScene.enemies) {
+      renderables.push({
+        depth: ISO.getDepth(en.x, en.y),
+        draw: () => drawCharacter(
+          en.x, en.y,
+          en.state === 'CHASE' ? '#a82020' : '#5e2c2c',
+          `${en.name} [${en.state}]`,
+          true
+        )
+      });
+    }
+
+    // Игрок
+    renderables.push({
+      depth: ISO.getDepth(state.player.x, state.player.y),
+      draw: () => drawCharacter(
+        state.player.x,
+        state.player.y,
+        state.character.includes('JOHN') ? '#6b8e78' : '#5c768d',
+        state.character,
+        false
+      )
+    });
+
+    renderables.sort((a, b) => a.depth - b.depth);
+    for (const r of renderables) r.draw();
+
+    // 3. Звуковые волны (CLANG / Выстрелы)
+    for (let i = state.soundWaves.length - 1; i >= 0; i--) {
+      const sw = state.soundWaves[i];
+      sw.r += dt * 6;
+      sw.alpha -= dt * 1.1;
+      if (sw.alpha <= 0) {
+        state.soundWaves.splice(i, 1);
+        continue;
+      }
+      const pos = ISO.cellToScreen(sw.x, sw.y);
+      ctx.strokeStyle = `rgba(235, 190, 110, ${sw.alpha})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(pos.x, pos.y, sw.r * 28, sw.r * 14, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // 4. Освещение, туман и сектор фонаря (GDD Раздел 4)
+    const pScreen = ISO.cellToScreen(state.player.x, state.player.y);
+    const dark = currentScene.darkness ?? 0.35;
+    const grad = ctx.createRadialGradient(
+      pScreen.x, pScreen.y - 20,
+      state.flashlight ? 55 : 22,
+      pScreen.x, pScreen.y - 20,
+      state.flashlight ? 290 : 145
+    );
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, `rgba(4, 6, 9, ${dark})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (state.flashlight) {
+      const fTarget = ISO.cellToScreen(
+        state.player.x + state.player.dirX * 3,
+        state.player.y + state.player.dirY * 3
+      );
+      const angle = Math.atan2(fTarget.y - (pScreen.y - 24), fTarget.x - pScreen.x);
+      ctx.fillStyle = 'rgba(255, 244, 195, 0.16)';
+      ctx.beginPath();
+      ctx.moveTo(pScreen.x, pScreen.y - 24);
+      ctx.arc(pScreen.x, pScreen.y - 24, 210, angle - 0.42, angle + 0.42);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  ctx.restore();
+  updateTopHUD();
+  requestAnimationFrame(gameLoop);
+}
+
+// ==========================================
+// 9. UI & INPUT HANDLERS
+// ==========================================
+function updateTopHUD() {
+  if (!currentScene) return;
+  document.getElementById('hud-char').textContent = state.character;
+  document.getElementById('hud-scene').textContent = currentScene.title;
+  document.getElementById('hud-hp').textContent = `HP: ${state.hp}%`;
+
+  const pTile = currentScene.tiles[state.player.y * currentScene.w + state.player.x];
+  const lightBadge = document.getElementById('hud-light');
+  const anyChase = currentScene.enemies.some(e => e.state === 'CHASE');
+
+  if (anyChase) {
+    lightBadge.className = 'badge danger';
+    lightBadge.textContent = 'ALERT: CHASE!';
+  } else if (state.flashlight) {
+    lightBadge.className = 'badge stealth-light';
+    lightBadge.textContent = 'FLASHLIGHT: ON (ЗАМЕТЕН)';
+  } else if (pTile === 3) {
+    lightBadge.className = 'badge stealth-shadow';
+    lightBadge.textContent = 'STEALTH: IN SHADOW (СКРЫТ)';
+  } else {
+    lightBadge.className = 'badge';
+    lightBadge.textContent = 'STEALTH: NORMAL';
+  }
+}
+
+function updateSidebarUI() {
+  if (currentScene) {
+    document.getElementById('hud-objective').textContent = currentScene.objective;
+  }
+  const invBox = document.getElementById('inv-container');
+  invBox.innerHTML = '';
+  if (state.inventory.length === 0) {
+    invBox.innerHTML = '<span style="color:var(--muted)">Пусто</span>';
+  } else {
+    for (const item of state.inventory) {
+      const el = document.createElement('div');
+      el.className = 'inv-item' + (state.equipped === item ? ' active' : '');
+      el.textContent = item;
+      el.onclick = () => {
+        state.equipped = item;
+        updateSidebarUI();
+      };
+      invBox.appendChild(el);
+    }
+  }
+
+  const flagsBox = document.getElementById('flags-container');
+  flagsBox.innerHTML = '';
+  for (const [k, v] of Object.entries(state.flags)) {
+    const row = document.createElement('div');
+    row.className = 'flag-row';
+    row.innerHTML = `<span>${k}</span><span class="${v ? 'flag-on' : 'flag-off'}">${v ? 'TRUE' : 'false'}</span>`;
+    flagsBox.appendChild(row);
+  }
+}
+
+window.addEventListener('keydown', (e) => {
+  const key = e.key.toLowerCase();
+  if (key === 'w' || e.key === 'ArrowUp') { e.preventDefault(); tryMovePlayer(0, -1); }
+  else if (key === 's' || e.key === 'ArrowDown') { e.preventDefault(); tryMovePlayer(0, 1); }
+  else if (key === 'a' || e.key === 'ArrowLeft') { e.preventDefault(); tryMovePlayer(-1, 0); }
+  else if (key === 'd' || e.key === 'ArrowRight') { e.preventDefault(); tryMovePlayer(1, 0); }
+  else if (key === 'e' || e.key === 'Enter') { e.preventDefault(); interactNearby(); }
+  else if (key === 'f') {
+    e.preventDefault();
+    state.flashlight = !state.flashlight;
+    sfx.playFlashlight();
+  }
+  else if (e.code === 'Space') {
+    e.preventDefault();
+    if (activeDialogue) advanceDialogue();
+    else performAttack();
+  }
+});
+
+canvas.addEventListener('click', (e) => {
+  if (activeDialogue) {
+    advanceDialogue();
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  const cell = ISO.screenToCell(e.clientX - rect.left, e.clientY - rect.top);
+  const dx = Math.sign(cell.x - state.player.x);
+  const dy = Math.sign(cell.y - state.player.y);
+  if (dx !== 0 || dy !== 0) {
+    if (Math.abs(cell.x - state.player.x) >= Math.abs(cell.y - state.player.y)) {
+      tryMovePlayer(dx, 0);
+    } else {
+      tryMovePlayer(0, dy);
+    }
+  } else {
+    interactNearby();
+  }
+});
+
+document.getElementById('dialogue-box').addEventListener('click', advanceDialogue);
+
+document.getElementById('scene-select').addEventListener('change', (e) => {
+  document.getElementById('cinema-overlay').style.display = 'none';
+  activeDialogue = null;
+  document.getElementById('dialogue-box').style.display = 'none';
+  loadScene(e.target.value);
+});
+
+document.getElementById('btn-reset-puzzle').addEventListener('click', () => {
+  loadScene(state.sceneId);
+});
+
+document.getElementById('btn-clear-save').addEventListener('click', () => {
+  localStorage.removeItem(SAVE_KEY);
+  state.flags = { ...DEFAULT_FLAGS };
+  state.inventory = [];
+  state.equipped = null;
+  state.hp = 100;
+  loadScene('scene00');
+});
+
+// Инициализация
+if (loadGame()) {
+  loadScene(state.sceneId);
+} else {
+  loadScene('scene00');
+}
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
+
